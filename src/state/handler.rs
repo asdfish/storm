@@ -11,7 +11,10 @@ use {
             output::OutputHandler,
         },
     },
-    super::Storm,
+    super::{
+        ClientState,
+        Storm,
+    },
 };
 
 impl CompositorHandler for Storm {
@@ -20,8 +23,7 @@ impl CompositorHandler for Storm {
     }
 
     fn client_compositor_state<'a>(&self, client: &'a Client) -> &'a CompositorClientState {
-        todo!()
-        //&client.get_data::<ClientState>().unwrap().compositor_state
+        &client.get_data::<ClientState>().unwrap().compositor_state
     }
 
     fn commit(&mut self, surface: &WlSurface) {

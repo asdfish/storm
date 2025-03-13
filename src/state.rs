@@ -4,7 +4,7 @@ use {
         delegate_compositor, delegate_output,
         reexports::{
             calloop::EventLoop,
-            wayland_server::{Client, Display, DisplayHandle, protocol::wl_surface::WlSurface},
+            wayland_server::{backend::ClientData, Client, Display, DisplayHandle, protocol::wl_surface::WlSurface},
         },
         wayland::{
             compositor::{CompositorClientState, CompositorHandler, CompositorState},
@@ -32,3 +32,9 @@ impl Storm {
         }
     }
 }
+
+#[derive(Default)]
+struct ClientState {
+    compositor_state: CompositorClientState,
+}
+impl ClientData for ClientState {}
