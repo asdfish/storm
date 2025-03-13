@@ -1,15 +1,11 @@
 use {
     crate::CalloopData,
     smithay::{
-        delegate_compositor, delegate_output,
         reexports::{
             calloop::EventLoop,
-            wayland_server::{backend::ClientData, Client, Display, DisplayHandle, protocol::wl_surface::WlSurface},
+            wayland_server::{backend::ClientData, Display, DisplayHandle},
         },
-        wayland::{
-            compositor::{CompositorClientState, CompositorHandler, CompositorState},
-            output::OutputHandler,
-        },
+        wayland::compositor::{CompositorClientState, CompositorHandler, CompositorState},
     },
 };
 

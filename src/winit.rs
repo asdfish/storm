@@ -10,7 +10,6 @@ use {
         output::{Mode, Output, PhysicalProperties, Subpixel},
         reexports::calloop::EventLoop,
     },
-    std::num::NonZeroUsize,
 };
 
 pub fn init(
@@ -21,7 +20,7 @@ pub fn init(
     let display_handle = &mut data.display_handle;
     let state = &mut data.state;
 
-    let (mut backend, winit) = Attempt::new(
+    let (backend, winit) = Attempt::new(
         DEFAULT_ATTEMPTS,
         StderrLogger::new("creating an instance of winit", verbosity),
         winit::init::<GlesRenderer>,

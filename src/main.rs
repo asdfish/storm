@@ -14,10 +14,7 @@ use {
         wayland_server::{Display, DisplayHandle, backend::InitError},
     },
     state::Storm,
-    std::{
-        ffi::{c_char, c_int},
-        num::NonZeroUsize,
-    },
+    std::ffi::{c_char, c_int},
 };
 
 #[derive(Debug)]
