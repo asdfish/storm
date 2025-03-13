@@ -2,3 +2,6 @@
 name = "storm"
 version = "0.1.0"
 edition = "2024"
+
+[dependencies]
+smithay = "0.5.1"

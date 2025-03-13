@@ -1,9 +1,20 @@
+use std::fmt::{self, Display, Formatter};
+
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Flag<'arg> {
     Separator,
     Value,
     Short(char),
     Long(&'arg str),
+}
+impl Display for Flag<'_> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Short(flag) => write!(f, "-{}", flag),
+            Self::Long(flag) => write!(f, "--{}", flag),
+            _ => Ok(()),
+        }
+    }
 }
 #[derive(Clone, Copy, Debug, PartialEq)]
 /// The private representation of flags with extra metadata.
@@ -24,9 +35,7 @@ impl<'arg> FlagInner<'arg> {
                 },
                 "",
             )
-        } else if arg.starts_with("--") {
-            let next = &arg[2..];
-
+        } else if let Some(next) = arg.strip_prefix("--") {
             let (identifier, value) = next
                 .char_indices()
                 .find(|(_, ch)| *ch == '=')
@@ -36,7 +45,7 @@ impl<'arg> FlagInner<'arg> {
             (
                 FlagInner {
                     kind: Flag::Long(identifier),
-                    value: value,
+                    value,
                 },
                 next,
             )
@@ -70,7 +79,7 @@ impl<'arg> FlagInner<'arg> {
             Flag::Value | Flag::Long(_) => Some(self.value),
             Flag::Short(_) => self
                 .value
-                .get(self.value.starts_with('=').then_some(1).unwrap_or(0)..),
+                .get(if self.value.starts_with('=') { 1 } else { 0 }..),
         };
 
         value.filter(|value| !value.is_empty())
@@ -172,7 +181,7 @@ where
     I: Iterator<Item = &'arg S>,
     S: AsRef<str> + ?Sized + 'arg,
 {
-    pub fn value(&mut self) -> Result<&'arg str, NoValueError> {
+    pub fn value(&mut self, flag: Flag<'arg>) -> Result<&'arg str, NoValueError<'arg>> {
         self.arg
             .and_then(|arg| arg.last)
             .and_then(|flag| flag.value())
@@ -182,7 +191,7 @@ where
                     _ => None,
                 })
             })
-            .ok_or(NoValueError)
+            .ok_or(NoValueError(flag))
     }
 
     fn advance(&mut self) -> Option<FlagInner<'arg>> {
@@ -211,7 +220,12 @@ where
 }
 
 #[derive(Debug, PartialEq)]
-pub struct NoValueError;
+pub struct NoValueError<'a>(Flag<'a>);
+impl Display for NoValueError<'_> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(f, "flag `{}` is missing an argument", self.0)
+    }
+}
 
 #[cfg(test)]
 mod tests {

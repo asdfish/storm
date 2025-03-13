@@ -1,36 +1,73 @@
 #![no_main]
 
-use std::{
-    ffi::{
-        CStr,
-        c_char,
-        c_int,
+mod attempt;
+mod config;
+mod opts;
+mod state;
+mod winit;
+
+use {
+    attempt::{Always, Attempt, DEFAULT_ATTEMPTS, StderrLogger},
+    config::Config,
+    smithay::reexports::{
+        calloop::EventLoop,
+        wayland_server::{Display, DisplayHandle, backend::InitError},
     },
-    process::exit,
+    state::Storm,
+    std::{
+        ffi::{c_char, c_int},
+        num::NonZeroUsize,
+    },
 };
 
-mod opts;
-
-const EXIT_SUCCESS: c_int = 0;
-const EXIT_FAILURE: c_int = 1;
+#[derive(Debug)]
+struct CalloopData {
+    state: Storm,
+    display_handle: DisplayHandle,
+}
 
 // SAFETY: every c program has done this since the dawn of time
 #[unsafe(no_mangle)]
 fn main(argc: c_int, argv: *const *const c_char) -> c_int {
-    if argc > 0 {
-        (0..argc)
-            // SAFETY: if argv and argc are unsafe, that is an operating system problem
-            .map(|i| unsafe { argv.add(i.try_into().expect("argc should be filtered to be positive above")) })
-            .filter(|ptr| !ptr.is_null())
-            // SAFETY: null pointers are checked above
-            .map(|arg| unsafe { CStr::from_ptr(*arg) })
-            .filter_map(|arg| match arg.to_str() {
-                Ok(arg) => Some(arg),
-                Err(err) => {
-                    todo!()
-                }
-            });
-    }
+    let mut config = Config::default();
+    // SAFETY: argc and argv should not be unsafe to dereference
+    unsafe { config.apply(argc, argv) };
 
-    EXIT_SUCCESS
+    let mut event_loop = match Attempt::new(
+        DEFAULT_ATTEMPTS,
+        StderrLogger::new("creating an event loop", config.verbosity),
+        || EventLoop::<CalloopData>::try_new(),
+        Always,
+    )
+    .execute()
+    {
+        Ok(el) => el,
+        Err(_) => unreachable!(),
+    };
+
+    let display = match Attempt::new(
+        DEFAULT_ATTEMPTS,
+        StderrLogger::new("creating a wayland display", config.verbosity),
+        Display::<Storm>::new,
+        |err: &InitError| !matches!(err, InitError::NoWaylandLib),
+    )
+    .execute()
+    {
+        Ok(display) => display,
+        Err(err) => {
+            config
+                .verbosity
+                .error(|| eprintln!("failed to create an event loop: {}", err));
+            return 1;
+        }
+    };
+    let display_handle = display.handle();
+
+    let mut data = CalloopData {
+        state: Storm::new(&mut event_loop, display),
+        display_handle,
+    };
+    winit::init(config.verbosity, &mut event_loop, &mut data);
+
+    0
 }
