@@ -3,12 +3,5 @@
 version = 4
 
 [[package]]
-name = "opts"
-version = "0.1.0"
-
-[[package]]
 name = "storm"
 version = "0.1.0"
-dependencies = [
- "opts",
-]

@@ -1,5 +1,3 @@
-#![no_std]
-
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Flag<'arg> {
     Separator,
