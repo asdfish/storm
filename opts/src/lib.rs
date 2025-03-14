@@ -1,4 +1,6 @@
-use std::fmt::{self, Display, Formatter};
+#![no_std]
+
+use core::fmt::{self, Display, Formatter};
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Flag<'arg> {
@@ -156,7 +158,7 @@ impl<'arg> Iterator for Argument<'arg> {
 /// assert_eq!(parser.next(), Some(Flag::Short('l')));
 /// assert_eq!(parser.next(), Some(Flag::Short('s')));
 /// assert_eq!(parser.next(), Some(Flag::Short('h')));
-/// assert_eq!(parser.value(), Ok("foo"));
+/// assert_eq!(parser.value(Flag::Short('h')), Ok("foo"));
 /// ```
 #[derive(Debug)]
 pub struct Parser<'arg, I, S>
@@ -185,6 +187,7 @@ where
         self.arg
             .and_then(|arg| arg.last)
             .and_then(|flag| flag.value())
+            .inspect(|_| self.arg = None)
             .or_else(|| {
                 self.advance().and_then(|flag| match flag.kind {
                     Flag::Value => Some(flag.value),
@@ -342,5 +345,13 @@ mod tests {
             Argument::new("--foo=").next().and_then(|arg| arg.value()),
             None
         );
+    }
+
+    #[test]
+    fn top_level() {
+        let mut parser = Parser::new(["-ctest"].into_iter());
+        assert_eq!(parser.next(), Some(Flag::Short('c')));
+        assert_eq!(parser.value(Flag::Short('c')), Ok("test"));
+        assert_eq!(parser.next(), None);
     }
 }

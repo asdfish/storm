@@ -1,7 +1,7 @@
 mod logger;
 
 use {
-    crate::opts::{Flag, Parser},
+    opts::{Flag, Parser},
     logger::{Logger, Null, Quiet, Verbose},
     std::{
         ffi::{CStr, c_char, c_int},

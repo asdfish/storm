@@ -2,6 +2,7 @@ use {
     super::{ClientState, Storm},
     smithay::{
         backend::renderer::utils::on_commit_buffer_handler,
+        desktop::Window,
         delegate_compositor, delegate_data_device, delegate_shm, delegate_xdg_shell,
         input::{SeatHandler, SeatState},
         reexports::{
@@ -76,10 +77,8 @@ impl XdgShellHandler for Storm {
     }
 
     fn new_toplevel(&mut self, surface: ToplevelSurface) {
-        surface.with_pending_state(|state| {
-            state.states.set(State::Activated);
-        });
-        surface.send_configure();
+        let window = Window::new_wayland_window(surface);
+        self.space.map_element(window, (0, 0), false);
     }
 
     fn new_popup(&mut self, _surface: PopupSurface, _positioner: PositionerState) {

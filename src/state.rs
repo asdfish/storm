@@ -74,13 +74,15 @@ impl Storm {
     pub fn new(event_loop: &EventLoop<Self>) -> Self {
         let loop_handle = event_loop.handle();
 
-        let display = Display::<Self>::new().unwrap();
+        let mut display = Display::<Self>::new().unwrap();
         let display_handle = display.handle();
 
         let mut seat_state = SeatState::new();
         let mut seat = seat_state.new_seat("winit");
         seat.add_pointer();
         let keyboard = seat.add_keyboard(Default::default(), 200, 25).unwrap();
+
+        let mut space = Space::default();
 
         let (mut backend, winit) = winit::init::<GlesRenderer>().unwrap();
         let mode = OutputMode {
@@ -96,9 +98,12 @@ impl Storm {
                 model: String::from("Winit"),
             }
         );
+        //let _global = output.create_global::<Self>(&display_handle);
         output.change_current_state(Some(mode), None, None, None);
         output.set_preferred(mode);
         let mut damage_tracker = OutputDamageTracker::from_output(&output);
+
+        space.map_output(&output, (0, 0));
 
         let socket = ListeningSocketSource::new_auto().unwrap();
         unsafe {
@@ -171,6 +176,9 @@ impl Storm {
                                 )
                             });
                         state.space.refresh();
+                        let _ = state.display_handle.flush_clients();
+
+                        //backend.window().request_redraw();
                     }
                     WinitEvent::Input(event) => match event {
                         InputEvent::Keyboard { event } => {
@@ -210,7 +218,7 @@ impl Storm {
             display_handle,
             loop_signal: event_loop.get_signal(),
             seat,
-            space: Space::default(),
+            space,
             start_time: Instant::now(),
         }
     }

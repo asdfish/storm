@@ -947,6 +947,10 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d75b0bedcc4fe52caa0e03d9f1151a323e4aa5e2d78ba3580400cd3c9e2bc4bc"
 
 [[package]]
+name = "opts"
+version = "0.1.0"
+
+[[package]]
 name = "orbclient"
 version = "0.3.48"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1331,6 +1335,7 @@ dependencies = [
 name = "storm"
 version = "0.1.0"
 dependencies = [
+ "opts",
  "smithay",
 ]
 

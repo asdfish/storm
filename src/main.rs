@@ -2,7 +2,6 @@
 
 mod attempt;
 mod config;
-mod opts;
 mod state;
 
 use {
@@ -26,16 +25,16 @@ fn main(argc: c_int, argv: *const *const c_char) -> c_int {
     let mut event_loop = EventLoop::<Storm>::try_new().unwrap();
     let mut storm = Storm::new(&event_loop);
 
-    config.execute_commands();
+    //config.execute_commands();
 
-    event_loop.run(
-        None,
-        //Some(Duration::from_millis(10)),
-        &mut storm,
-        |_data| {
-            println!("something happened");
-        }
-    ).unwrap();
+    //event_loop.run(
+    //    None,
+    //    //Some(Duration::from_millis(10)),
+    //    &mut storm,
+    //    |_data| {
+    //        println!("something happened");
+    //    }
+    //).unwrap();
 
     0
 }
