@@ -1,7 +1,4 @@
-use {
-    crate::config::Verbosity,
-    std::{fmt::Display, num::NonZeroUsize},
-};
+use std::{fmt::Display, num::NonZeroUsize};
 
 pub const DEFAULT_ATTEMPTS: NonZeroUsize = NonZeroUsize::new(3).unwrap();
 
@@ -30,25 +27,13 @@ where
 {
     fn log(&mut self, n: usize, of: usize, err: &E);
 }
-pub struct StderrLogger {
-    description: &'static str,
-    verbosity: Verbosity,
-}
-impl StderrLogger {
-    pub const fn new(description: &'static str, verbosity: Verbosity) -> Self {
-        Self {
-            description,
-            verbosity,
-        }
-    }
-}
-impl<E> Logger<E> for StderrLogger
+impl<E, F> Logger<E> for F
 where
     E: Display,
+    F: FnMut(usize, usize, &E),
 {
     fn log(&mut self, n: usize, of: usize, err: &E) {
-        self.verbosity
-            .error(|| eprintln!("{} attempt {}/{}: {}", self.description, n, of, err));
+        self(n, of, err)
     }
 }
 

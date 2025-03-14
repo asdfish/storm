@@ -1,15 +1,28 @@
+mod logger;
+
 use {
     crate::opts::{Flag, Parser},
+    logger::{Logger, Null, Quiet, Verbose},
     std::{
         ffi::{CStr, c_char, c_int},
-        process::exit,
+        process::{
+            Command,
+            exit,
+        },
     },
 };
 
-#[derive(Default)]
 pub struct Config<'a> {
     commands: Vec<&'a str>,
-    pub verbosity: Verbosity,
+    logger: &'static dyn Logger,
+}
+impl Default for Config<'_> {
+    fn default() -> Self {
+        Self {
+            commands: Vec::new(),
+            logger: &Quiet,
+        }
+    }
 }
 impl<'a> Config<'a> {
     /// SAFETY: `argc` must be accurate and `argv` must point to owned memory addresses
@@ -42,7 +55,7 @@ impl<'a> Config<'a> {
                         match parser.value(flag) {
                             Ok(value) => value,
                             Err(err) => {
-                                self.verbosity.error(|| eprintln!("{}", err));
+                                self.logger.error(&|| eprintln!("{}", err));
                                 continue;
                             }
                         }
@@ -71,51 +84,30 @@ Options:
                         exit(0);
                     }
                     Flag::Short('v') | Flag::Long("verbose") => match value_or_continue!() {
-                        "none" => self.verbosity = Verbosity::None,
-                        "quiet" => self.verbosity = Verbosity::Quiet,
-                        "verbose" => self.verbosity = Verbosity::Verbose,
+                        "none" => self.logger = &Null,
+                        "quiet" => self.logger = &Quiet,
+                        "verbose" => self.logger = &Verbose,
                         level => self
-                            .verbosity
-                            .error(|| eprintln!("unknown verbosity level: `{}`", level)),
+                            .logger
+                            .error(&|| eprintln!("unknown verbosity level: `{}`", level)),
                     },
                     Flag::Short('c') | Flag::Long("command") => {
                         self.commands.push(value_or_continue!());
                     }
                     flag @ Flag::Short(_) | flag @ Flag::Long(_) => {
-                        self.verbosity
-                            .error(|| eprintln!("unknown flag `{}`", flag));
+                        self.logger.error(&|| eprintln!("unknown flag `{}`", flag));
                     }
                     _ => {}
                 }
             }
         }
     }
-}
 
-#[derive(Clone, Copy, Default, PartialEq)]
-pub enum Verbosity {
-    None,
-    #[default]
-    Quiet,
-    Verbose,
-}
-impl Verbosity {
-    /// Only activates on [Self::Quiet] and [Self::Verbose]
-    pub fn error<F>(&self, operation: F)
-    where
-        F: FnOnce(),
-    {
-        if *self != Verbosity::None {
-            operation();
-        }
-    }
-    /// Only activates on [Self::Verbose]
-    pub fn log<F>(&self, operation: F)
-    where
-        F: FnOnce(),
-    {
-        if *self == Verbosity::Verbose {
-            operation();
-        }
+    pub fn execute_commands(&self) {
+        self.commands.iter()
+            .for_each(|command| match Command::new(command).spawn() {
+                Ok(_) => {},
+                Err(err) => self.logger.error(&|| eprintln!("error spawning command `{}`: {}", command, err)),
+            })
     }
 }
