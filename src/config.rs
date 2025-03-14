@@ -43,6 +43,7 @@ pub struct Config<'a> {
     file: Option<RefCell<File>>,
 }
 impl<'a> Config<'a> {
+    /// Errors in argument parsing are always printed to stderr.
     pub fn apply<I: Iterator<Item = &'a S>, S: AsRef<str> + ?Sized + 'a>(&mut self, args: I) {
         let mut parser = Parser::new(args);
         while let Some(flag) = parser.next() {
@@ -101,7 +102,9 @@ Defaults to stderr if not set or printing fails."
         }
     }
 
-    /// SAFETY: `argc` must be accurate and `argv` must point to owned memory addresses
+    /// # SAFETY
+    ///
+    /// `argc` must be accurate and `argv` must point to owned memory addresses
     ///
     /// Errors in argument parsing are always printed to stderr.
     pub unsafe fn apply_argv(&mut self, argc: c_int, argv: *const *const c_char) {
