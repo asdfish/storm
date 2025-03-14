@@ -64,7 +64,22 @@ fn main(argc: c_int, argv: *const *const c_char) -> c_int {
         state: Storm::new(&mut event_loop, display),
         display_handle,
     };
-    winit::init(config.verbosity, &mut event_loop, &mut data);
+    match winit::init(config.verbosity, &mut event_loop, &mut data) {
+        Ok(()) => {},
+        Err(err) => {
+            config.verbosity.error(|| eprintln!("failed to initiate winit: {}", err));
+            return 1;
+        }
+    }
 
+    match event_loop.run(None, &mut data, move |state| {
+        println!("{state:?}");
+    }) {
+        Ok(()) => {},
+        Err(err) => {
+            eprintln!("failure running event loop: {}", err);
+            return 1;
+        },
+    }
     0
 }
