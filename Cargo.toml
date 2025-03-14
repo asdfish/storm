@@ -5,7 +5,6 @@ edition = "2024"
 
 [dependencies]
 opts = { path = "opts" }
-smithay = "0.5.0"
 
 [workspace]
 members = ["opts"]
