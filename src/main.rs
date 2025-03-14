@@ -1,6 +1,8 @@
 #![no_main]
 
-mod config;
+pub mod backend;
+pub mod config;
+pub mod state;
 
 use {
     config::Config,
@@ -12,7 +14,7 @@ use {
 fn main(argc: c_int, argv: *const *const c_char) -> c_int {
     let mut config = Config::default();
     // SAFETY: argc and argv should not be unsafe to dereference
-    unsafe { config.apply(argc, argv) };
+    unsafe { config.apply_argv(argc, argv) };
 
     0
 }
