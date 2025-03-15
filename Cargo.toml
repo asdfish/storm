@@ -4,6 +4,7 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+sync = { path = "sync" }
 opts = { path = "opts" }
 
 [target.'cfg(windows)'.dependencies]
@@ -13,4 +14,4 @@ widestring = "1.1.0"
 winapi = { version = "0.3.9", features = ["errhandlingapi", "std", "winbase", "winuser"] }
 
 [workspace]
-members = [ "opts" , "raii"]
+members = [ "opts" , "raii", "sync"]
