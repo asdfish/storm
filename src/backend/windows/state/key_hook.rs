@@ -3,37 +3,23 @@ use {
     crate::{
         backend::{
             State,
-            windows::{WinapiError, WindowsBackendError, WindowsWindow},
+            windows::{WinapiError, WindowsBackendError},
         },
         state::Event,
     },
-    parking_lot::{RwLock, const_rwlock},
     std::{
-        cell::Cell,
-        collections::{HashMap, HashSet},
-        mem,
         num::NonZeroUsize,
-        ptr::{NonNull, null_mut},
-        sync::{Arc, atomic::AtomicPtr, mpsc},
-        thread,
+        ptr::null_mut,
     },
     widestring::ustr::U16Str,
     winapi::{
         ctypes::c_int,
-        shared::{
-            minwindef::{LPARAM, LRESULT, WPARAM},
-            windef::HHOOK__,
-        },
-        um::{
-            winnt::WCHAR,
-            winuser::{
-                CallNextHookEx, DispatchMessageW, GetKeyboardState, GetKeyState, GetMessageW, KBDLLHOOKSTRUCT,
-                MSG, SetWindowsHookExW, ToUnicode, TranslateMessage, UnhookWindowsHookEx,
-                WH_KEYBOARD_LL, WM_KEYDOWN,
+        shared::minwindef::{LPARAM, LRESULT, WPARAM},
+        um::winuser::{
+                CallNextHookEx, GetKeyboardState, GetKeyState, KBDLLHOOKSTRUCT, ToUnicode, WM_KEYDOWN,
                 VK_MENU,
                 VK_SHIFT,
             },
-        },
     },
 };
 

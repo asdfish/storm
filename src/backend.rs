@@ -6,7 +6,6 @@ use {
     std::{
         collections::{HashMap, HashSet},
         fmt::Display,
-        io,
         sync::mpsc::Sender,
     },
 };

@@ -7,9 +7,7 @@ use {
         collections::{HashMap, HashSet},
         fmt::Display,
         marker::PhantomData,
-        num::NonZeroU8,
         sync::mpsc,
-        thread,
     },
 };
 
@@ -48,7 +46,7 @@ where
             _marker: PhantomData,
         })
     }
-    pub fn run(mut self) -> Result<(), E> {
+    pub fn run(self) -> Result<(), E> {
         loop {
             match self.rx.recv() {
                 Ok(event) => match event {

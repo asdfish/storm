@@ -11,7 +11,7 @@ use {
     },
     widestring::ucstr::U16CStr,
     winapi::{
-        ctypes::{c_int, c_void},
+        ctypes::c_void,
         shared::minwindef::DWORD,
         um::{
             errhandlingapi::GetLastError,

@@ -8,22 +8,17 @@ use {
     },
     parking_lot::{RwLock, const_rwlock},
     std::{
-        cell::Cell,
         collections::{HashMap, HashSet},
         mem,
         ptr::{NonNull, null_mut},
-        sync::{Arc, atomic::AtomicPtr, mpsc},
+        sync::{atomic::AtomicPtr, mpsc},
         thread,
     },
     winapi::{
-        ctypes::c_int,
-        shared::{
-            minwindef::{LPARAM, LRESULT, WPARAM},
-            windef::HHOOK__,
-        },
+        shared::windef::HHOOK__,
         um::winuser::{
-            CallNextHookEx, DispatchMessageW, GetMessageW, KBDLLHOOKSTRUCT, MSG, SetWindowsHookExW,
-            TranslateMessage, UnhookWindowsHookEx, WH_KEYBOARD_LL, WM_KEYDOWN,
+            DispatchMessageW, GetMessageW, SetWindowsHookExW,
+            TranslateMessage, UnhookWindowsHookEx, WH_KEYBOARD_LL,
         },
     },
 };
