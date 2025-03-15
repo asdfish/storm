@@ -15,16 +15,11 @@ where
     E: Display,
     W: Window,
 {
-    /// Operate on windows before they get put into [Storm].
-    fn new(_: &mut HashMap<u8, HashSet<W>>, _: Sender<Result<Event, E>>) -> Result<Self, E>;
-    /// Should be blocking since [Storm::run] moves itself to another thread.
-    ///
-    /// This is for backends like windows you need to have the messages be dispatched on the same
-    /// thread that set up the hooks.
-    fn run(&self) {}
     /// This function gets called whenever [Storm] receives an event. Useful for things
     /// that need to occur every event.
-    fn on_receive(_: &mut Storm<Self, W, E>) {}
+    fn each_event(_: &mut Storm<Self, W, E>) {}
+    /// Operate on windows before they get put into [Storm].
+    fn new(_: &mut HashMap<u8, HashSet<W>>, _: Sender<Result<Event, E>>) -> Result<Self, E>;
 }
 
 pub trait Window {

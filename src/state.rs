@@ -20,8 +20,8 @@ where
     backend_state: S,
     config: Config<'a>,
     rx: mpsc::Receiver<Result<Event, E>>,
-    workspace: u8,
-    workspaces: HashMap<u8, HashSet<W>>,
+    pub workspace: u8,
+    pub workspaces: HashMap<u8, HashSet<W>>,
 
     _marker: PhantomData<E>,
 }
@@ -46,7 +46,7 @@ where
             _marker: PhantomData,
         })
     }
-    pub fn run(self) -> Result<(), E> {
+    pub fn run(mut self) -> Result<(), E> {
         loop {
             match self.rx.recv() {
                 Ok(event) => match event {
@@ -60,6 +60,7 @@ where
                     break Ok(());
                 }
             }
+            S::each_event(&mut self);
         }
     }
 }

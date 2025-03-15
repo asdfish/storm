@@ -4,7 +4,7 @@ use {
             State,
             windows::{WinapiError, WindowsBackendError, WindowsWindow},
         },
-        state::Event,
+        state::{Event, Storm},
     },
     parking_lot::{RwLock, const_rwlock},
     std::{
@@ -17,7 +17,7 @@ use {
     winapi::{
         shared::windef::HHOOK__,
         um::winuser::{
-            DispatchMessageW, GetMessageW, SetWindowsHookExW,
+            DispatchMessageW, GetMessageW, GetForegroundWindow, SetWindowsHookExW,
             TranslateMessage, UnhookWindowsHookEx, WH_KEYBOARD_LL,
         },
     },
@@ -41,6 +41,24 @@ impl Drop for WindowsBackendState {
     }
 }
 impl State<WindowsWindow, WindowsBackendError> for WindowsBackendState {
+    fn each_event(state: &mut Storm::<Self, WindowsWindow, WindowsBackendError>) {
+        match NonNull::new(unsafe { GetForegroundWindow() }) {
+            Some(foreground_window) => {
+                let foreground_window = WindowsWindow(foreground_window);
+
+                if !state
+                    .workspaces
+                    .values()
+                    .any(|workspace| workspace.contains(&foreground_window)) {
+                    state.workspaces.entry(state.workspace)
+                        .and_modify(|workspace| { workspace.insert(foreground_window); })
+                        .or_insert_with(|| HashSet::from([foreground_window]));
+                }
+            },
+            None => {},
+        }
+    }
+
     fn new(
         _: &mut HashMap<u8, HashSet<WindowsWindow>>,
         event_sender: mpsc::Sender<Result<Event, WindowsBackendError>>,

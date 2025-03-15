@@ -26,6 +26,7 @@ use {
 };
 
 #[repr(transparent)]
+#[derive(Clone, Copy, Eq, Hash, PartialEq)]
 pub struct WindowsWindow(pub NonNull<HWND__>);
 
 impl Window for WindowsWindow {
