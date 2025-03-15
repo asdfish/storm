@@ -1,7 +1,25 @@
 #[cfg(windows)]
 pub mod windows;
 
-use std::io;
+use {
+    crate::state::{Event, Storm},
+    std::{
+        collections::{HashMap, HashSet},
+        io,
+        sync::mpsc::Sender,
+    },
+};
+
+pub trait State<W, E>: Sized
+where
+    W: Window,
+{
+    /// Operate on windows before they get put into [Storm].
+    fn new(_: &mut HashMap<u8, HashSet<W>>, _: Sender<Event>) -> Result<Self, E>;
+    /// This function gets called whenever [Storm::receiver] receives an event. Useful for things
+    /// that need to occur every event.
+    fn on_receive(_: &mut Storm<Self, W, E>) {}
+}
 
 pub trait Window {
     type Error;

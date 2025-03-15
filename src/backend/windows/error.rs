@@ -66,7 +66,7 @@ impl<T> ReturnError for *mut T {
 /// Contains the error code similar to errno.
 ///
 /// Error code 0 is for when operations return successfully, however it relies on the callee using
-/// `SetLastError` which is unreliable, so this cannot be represented with a NonZero<DWORD>.
+/// `SetLastError` which is unreliable, so this cannot be represented with a `NonZero<DWORD>`.
 pub struct WinapiError(DWORD);
 
 impl WinapiError {
@@ -139,6 +139,8 @@ impl StdError for WinapiError {}
 #[derive(Debug)]
 /// All possible errors in this backend.
 pub enum WindowsBackendError {
+    MultipleKeyboardHooks,
+    NoEventSender,
     TryFromInt(TryFromIntError),
     Winapi(WinapiError),
 }
@@ -155,6 +157,8 @@ impl From<WinapiError> for WindowsBackendError {
 impl Display for WindowsBackendError {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
+            Self::MultipleKeyboardHooks => write!(f, "there are multiple keyboard hooks installed"),
+            Self::NoEventSender => write!(f, "event sender does not exist"),
             Self::TryFromInt(error) => write!(f, "{}", error),
             Self::Winapi(error) => write!(f, "{}", error),
         }
