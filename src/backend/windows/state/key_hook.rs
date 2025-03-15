@@ -52,7 +52,7 @@ fn translate_key(key_diff: LPARAM) -> Result<Option<String>, WindowsBackendError
     let mut keyboard_state = [0; 256];
     WinapiError::from_return(unsafe { GetKeyboardState(keyboard_state.as_mut_ptr()) })?;
 
-    let mut buffer: Box<[WCHAR]> = Box::new([0; 2]);
+    let mut buffer = [0; 2];
 
     let Some(len) = (match unsafe {
         ToUnicode(
