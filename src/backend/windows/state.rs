@@ -22,31 +22,16 @@ use {
             windef::HHOOK__,
         },
         um::winuser::{
-            CallNextHookEx, DispatchMessageW, GetMessageW, MSG, SetWindowsHookExW,
+            CallNextHookEx, DispatchMessageW, GetMessageW, KBDLLHOOKSTRUCT, MSG, SetWindowsHookExW,
             TranslateMessage, UnhookWindowsHookEx, WH_KEYBOARD_LL, WM_KEYDOWN,
         },
     },
 };
 
-static EVENT_SENDER: RwLock<Option<mpsc::Sender<Result<Event, WindowsBackendError>>>> = const_rwlock(None);
+mod key_hook;
 
-unsafe extern "system" fn key_hook(code: c_int, event_ident: WPARAM, info: LPARAM) -> LRESULT {
-    let call_next_hook = || unsafe { CallNextHookEx(null_mut(), code, event_ident, info) };
-
-    if code < 0 {
-        return call_next_hook();
-    }
-
-    if event_ident == WM_KEYDOWN.try_into().expect("internal error: `WM_KEYDOWN` should be comparable with the second parameter of a `LowlevelKeyboardProc`") {
-        if let Some(sender) = EVENT_SENDER.read().as_ref() {
-            sender
-                .send(Ok(Event::Key(String::new())))
-                .expect("internal error: EVENT_SENDER got disconnected");
-        }
-    }
-
-    return call_next_hook();
-}
+static EVENT_SENDER: RwLock<Option<mpsc::Sender<Result<Event, WindowsBackendError>>>> =
+    const_rwlock(None);
 
 #[repr(transparent)]
 pub struct WindowsBackendState {
@@ -80,7 +65,7 @@ impl State<WindowsWindow, WindowsBackendError> for WindowsBackendState {
             // the hook must be set on the same thread as the message sending
             tx.send(
                 WinapiError::from_return(unsafe {
-                    SetWindowsHookExW(WH_KEYBOARD_LL, Some(key_hook), null_mut(), 0)
+                    SetWindowsHookExW(WH_KEYBOARD_LL, Some(key_hook::key_hook), null_mut(), 0)
                 })
                 .map(NonNull::as_ptr)
                 .map(AtomicPtr::new),

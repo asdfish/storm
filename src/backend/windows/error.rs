@@ -141,6 +141,7 @@ impl StdError for WinapiError {}
 pub enum WindowsBackendError {
     MultipleKeyboardHooks,
     NoEventSender,
+    NullKbdllhookstruct,
     TryFromInt(TryFromIntError),
     Winapi(WinapiError),
 }
@@ -159,6 +160,7 @@ impl Display for WindowsBackendError {
         match self {
             Self::MultipleKeyboardHooks => write!(f, "there are multiple keyboard hooks installed"),
             Self::NoEventSender => write!(f, "event sender does not exist"),
+            Self::NullKbdllhookstruct => write!(f, "windows passed a null KBDLLHOOKSTRUCT pointer"),
             Self::TryFromInt(error) => write!(f, "{}", error),
             Self::Winapi(error) => write!(f, "{}", error),
         }

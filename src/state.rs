@@ -52,7 +52,7 @@ where
         loop {
             match self.rx.recv() {
                 Ok(event) => match event {
-                    Ok(Event::Key(_)) => println!("key event"),
+                    Ok(Event::Key(key)) => println!("key event: {:?}", key),
                     Err(e) => eprintln!("failed to process event: {}", e),
                 },
                 Err(error) => {
