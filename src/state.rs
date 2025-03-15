@@ -5,6 +5,7 @@ use {
     },
     std::{
         collections::{HashMap, HashSet},
+        fmt::Display,
         marker::PhantomData,
         num::NonZeroU8,
         sync::mpsc,
@@ -14,12 +15,13 @@ use {
 
 pub struct Storm<S, W, E>
 where
+    E: Display,
     S: backend::State<W, E>,
     W: Window,
 {
     backend_state: S,
     config: Config<'static>,
-    rx: mpsc::Receiver<Event>,
+    rx: mpsc::Receiver<Result<Event, E>>,
     workspace: u8,
     workspaces: HashMap<u8, HashSet<W>>,
 
@@ -27,6 +29,7 @@ where
 }
 impl<S, W, E> Storm<S, W, E>
 where
+    E: Display,
     S: backend::State<W, E>,
     W: Window,
 {
@@ -49,7 +52,8 @@ where
         loop {
             match self.rx.recv() {
                 Ok(event) => match event {
-                    Event::Key(_) => println!("key event"),
+                    Ok(Event::Key(_)) => println!("key event"),
+                    Err(e) => eprintln!("failed to process event: {}", e),
                 },
                 Err(error) => {
                     self.config.log(LogLevel::Verbose, |f| {

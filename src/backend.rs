@@ -5,6 +5,7 @@ use {
     crate::state::{Event, Storm},
     std::{
         collections::{HashMap, HashSet},
+        fmt::Display,
         io,
         sync::mpsc::Sender,
     },
@@ -12,10 +13,11 @@ use {
 
 pub trait State<W, E>: Sized
 where
+    E: Display,
     W: Window,
 {
     /// Operate on windows before they get put into [Storm].
-    fn new(_: &mut HashMap<u8, HashSet<W>>, _: Sender<Event>) -> Result<Self, E>;
+    fn new(_: &mut HashMap<u8, HashSet<W>>, _: Sender<Result<Event, E>>) -> Result<Self, E>;
     /// Should be blocking since [Storm::run] moves itself to another thread.
     ///
     /// This is for backends like windows you need to have the messages be dispatched on the same

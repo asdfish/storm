@@ -6,7 +6,7 @@ use {
         },
         state::Event,
     },
-    parking_lot::{Condvar, Mutex, RwLock, const_rwlock},
+    parking_lot::{RwLock, const_rwlock},
     std::{
         cell::Cell,
         collections::{HashMap, HashSet},
@@ -23,12 +23,12 @@ use {
         },
         um::winuser::{
             CallNextHookEx, DispatchMessageW, GetMessageW, MSG, SetWindowsHookExW,
-            TranslateMessage, UnhookWindowsHookEx, WH_KEYBOARD_LL,
+            TranslateMessage, UnhookWindowsHookEx, WH_KEYBOARD_LL, WM_KEYDOWN,
         },
     },
 };
 
-static EVENT_SENDER: RwLock<Option<mpsc::Sender<Event>>> = const_rwlock(None);
+static EVENT_SENDER: RwLock<Option<mpsc::Sender<Result<Event, WindowsBackendError>>>> = const_rwlock(None);
 
 unsafe extern "system" fn key_hook(code: c_int, event_ident: WPARAM, info: LPARAM) -> LRESULT {
     let call_next_hook = || unsafe { CallNextHookEx(null_mut(), code, event_ident, info) };
@@ -37,15 +37,18 @@ unsafe extern "system" fn key_hook(code: c_int, event_ident: WPARAM, info: LPARA
         return call_next_hook();
     }
 
-    if let Some(sender) = EVENT_SENDER.read().as_ref() {
-        sender
-            .send(Event::Key(String::new()))
-            .expect("internal error: EVENT_SENDER got disconnected");
+    if event_ident == WM_KEYDOWN.try_into().expect("internal error: `WM_KEYDOWN` should be comparable with the second parameter of a `LowlevelKeyboardProc`") {
+        if let Some(sender) = EVENT_SENDER.read().as_ref() {
+            sender
+                .send(Ok(Event::Key(String::new())))
+                .expect("internal error: EVENT_SENDER got disconnected");
+        }
     }
 
     return call_next_hook();
 }
 
+#[repr(transparent)]
 pub struct WindowsBackendState {
     key_hook: NonNull<HHOOK__>,
 }
@@ -60,7 +63,7 @@ impl Drop for WindowsBackendState {
 impl State<WindowsWindow, WindowsBackendError> for WindowsBackendState {
     fn new(
         _: &mut HashMap<u8, HashSet<WindowsWindow>>,
-        event_sender: mpsc::Sender<Event>,
+        event_sender: mpsc::Sender<Result<Event, WindowsBackendError>>,
     ) -> Result<Self, WindowsBackendError> {
         {
             let mut event_sender_smuggler = EVENT_SENDER.write();
@@ -82,7 +85,7 @@ impl State<WindowsWindow, WindowsBackendError> for WindowsBackendState {
                 .map(NonNull::as_ptr)
                 .map(AtomicPtr::new),
             )
-            .expect("`rx` should not be dropped yet");
+            .expect("internal error: `rx` should not be dropped yet");
 
             let mut msg = unsafe { mem::zeroed() };
             loop {
@@ -101,7 +104,7 @@ impl State<WindowsWindow, WindowsBackendError> for WindowsBackendState {
         Ok(Self {
             key_hook: rx
                 .recv()
-                .expect("`tx` should not be dropped")
+                .expect("internal error: `tx` should not be dropped")
                 .map(AtomicPtr::into_inner)
                 .map(NonNull::new)
                 .map(|ptr| {
