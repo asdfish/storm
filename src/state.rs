@@ -11,27 +11,27 @@ use {
     },
 };
 
-pub struct Storm<S, W, E>
+pub struct Storm<'a, S, W, E>
 where
     E: Display,
     S: backend::State<W, E>,
     W: Window,
 {
     backend_state: S,
-    config: Config<'static>,
+    config: Config<'a>,
     rx: mpsc::Receiver<Result<Event, E>>,
     workspace: u8,
     workspaces: HashMap<u8, HashSet<W>>,
 
     _marker: PhantomData<E>,
 }
-impl<S, W, E> Storm<S, W, E>
+impl<'a, S, W, E> Storm<'a, S, W, E>
 where
     E: Display,
     S: backend::State<W, E>,
     W: Window,
 {
-    pub fn new(config: Config<'static>) -> Result<Self, E> {
+    pub fn new(config: Config<'a>) -> Result<Self, E> {
         let (tx, rx) = mpsc::channel();
         let mut workspaces = HashMap::new();
 
