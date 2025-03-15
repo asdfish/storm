@@ -16,5 +16,13 @@ fn main(argc: c_int, argv: *const *const c_char) -> c_int {
     // SAFETY: argc and argv should not be unsafe to dereference
     unsafe { config.apply_argv(argc, argv) };
 
+    state::Storm::<
+        backend::windows::WindowsBackendState,
+        backend::windows::WindowsWindow,
+        backend::windows::WindowsBackendError,
+    >::new(config)
+    .run()
+    .unwrap();
+
     0
 }

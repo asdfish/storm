@@ -7,57 +7,61 @@ use {
         collections::{HashMap, HashSet},
         marker::PhantomData,
         num::NonZeroU8,
-        sync::mpsc::{Receiver, Sender, channel},
+        sync::mpsc,
+        thread,
     },
 };
 
-pub struct Storm<'a, S, W, E>
+pub struct Storm<S, W, E>
 where
     S: backend::State<W, E>,
     W: Window,
 {
-    backend_state: S,
-    config: Config<'a>,
-    event_receiver: Receiver<Event>,
+    config: Config<'static>,
     workspace: u8,
-    windows: HashMap<u8, HashSet<W>>,
+    workspaces: HashMap<u8, HashSet<W>>,
 
-    _marker: PhantomData<E>,
+    _marker: PhantomData<(S, E)>,
 }
-impl<'a, S, W, E> Storm<'a, S, W, E>
+impl<S, W, E> Storm<S, W, E>
 where
     S: backend::State<W, E>,
     W: Window,
 {
-    pub fn new(config: Config<'a>) -> Result<Self, E> {
-        let (sender, event_receiver) = channel();
-
-        let mut windows = HashMap::new();
-        let backend_state = S::new(&mut windows, sender)?;
-
-        Ok(Self {
-            backend_state,
+    pub fn new(config: Config<'static>) -> Self {
+        Self {
             config,
-            event_receiver,
             // We start at one since most keyboards have 1 at the top left.
             workspace: 1,
-            windows,
+            workspaces: HashMap::new(),
 
             _marker: PhantomData,
-        })
+        }
     }
-    pub fn run(&mut self) {
-        loop {
-            match self.event_receiver.recv() {
-                Ok(event) => {}
-                Err(error) => {
-                    self.config.log(LogLevel::Quiet, |f| {
-                        writeln!(f, "all senders have disconnected: {}", error)
-                    });
-                    break;
+    pub fn run(mut self) -> Result<(), E> {
+        let (event_sender, event_receiver) = mpsc::channel();
+        let backend_state = S::new(&mut self.workspaces, event_sender)?;
+
+        thread::spawn(move || {
+            loop {
+                match event_receiver.recv() {
+                    Ok(event) => match event {
+                        Event::Key(_) => {
+                            println!("key event");
+                        }
+                    },
+                    Err(error) => {
+                        self.config.log(LogLevel::Verbose, |f| {
+                            writeln!(f, "all senders have disconnected: {}", error)
+                        });
+                        return;
+                    }
                 }
             }
-        }
+        });
+
+        backend_state.run();
+        Ok(())
     }
 }
 

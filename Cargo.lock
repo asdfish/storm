@@ -95,16 +95,8 @@ dependencies = [
  "opts",
  "parking_lot",
  "raii",
- "sync",
  "widestring",
  "winapi",
-]
-
-[[package]]
-name = "sync"
-version = "0.1.0"
-dependencies = [
- "parking_lot",
 ]
 
 [[package]]

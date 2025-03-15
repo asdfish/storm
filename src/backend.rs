@@ -16,7 +16,12 @@ where
 {
     /// Operate on windows before they get put into [Storm].
     fn new(_: &mut HashMap<u8, HashSet<W>>, _: Sender<Event>) -> Result<Self, E>;
-    /// This function gets called whenever [Storm::receiver] receives an event. Useful for things
+    /// Should be blocking since [Storm::run] moves itself to another thread.
+    ///
+    /// This is for backends like windows you need to have the messages be dispatched on the same
+    /// thread that set up the hooks.
+    fn run(&self) {}
+    /// This function gets called whenever [Storm] receives an event. Useful for things
     /// that need to occur every event.
     fn on_receive(_: &mut Storm<Self, W, E>) {}
 }
