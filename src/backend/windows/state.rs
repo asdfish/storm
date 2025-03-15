@@ -71,22 +71,18 @@ impl State<WindowsWindow, WindowsBackendError> for WindowsBackendState {
             }
         }
 
-        let package = Arc::new((Mutex::new(None), Condvar::new()));
+        let (tx, rx) = mpsc::sync_channel(1);
 
-        let thread_package = Arc::clone(&package);
         thread::spawn(move || {
-            {
-                let (tx, notification) = &*thread_package;
-                *tx.lock() = Some(
-                    WinapiError::from_return(unsafe {
-                        SetWindowsHookExW(WH_KEYBOARD_LL, Some(key_hook), null_mut(), 0)
-                    })
-                    .map(NonNull::as_ptr)
-                    .map(AtomicPtr::new),
-                );
-                notification.notify_one();
-                drop(thread_package);
-            }
+            // the hook must be set on the same thread as the message sending
+            tx.send(
+                WinapiError::from_return(unsafe {
+                    SetWindowsHookExW(WH_KEYBOARD_LL, Some(key_hook), null_mut(), 0)
+                })
+                .map(NonNull::as_ptr)
+                .map(AtomicPtr::new),
+            )
+            .expect("`rx` should not be dropped yet");
 
             let mut msg = unsafe { mem::zeroed() };
             loop {
@@ -102,23 +98,17 @@ impl State<WindowsWindow, WindowsBackendError> for WindowsBackendState {
             }
         });
 
-        {
-            let (rx, notification) = &*package;
-            notification.wait(&mut rx.lock());
-        }
-
         Ok(Self {
-            key_hook: Mutex::into_inner(
-                Arc::into_inner(package)
-                    .expect("all references should have been dropped")
-                    .0,
-            )
-            .expect("`notification` should only wake after `rx` is [Some]")
-            .map(AtomicPtr::into_inner)
-            .map(NonNull::new)
-            .map(|ptr| {
-                ptr.expect("internal error: [WinapiError::from_return] should filter null pointers")
-            })?,
+            key_hook: rx
+                .recv()
+                .expect("`tx` should not be dropped")
+                .map(AtomicPtr::into_inner)
+                .map(NonNull::new)
+                .map(|ptr| {
+                    ptr.expect(
+                        "internal error: [WinapiError::from_return] should filter null pointers",
+                    )
+                })?,
         })
     }
 }

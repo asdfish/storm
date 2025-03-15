@@ -50,7 +50,7 @@ where
             match self.rx.recv() {
                 Ok(event) => match event {
                     Event::Key(_) => println!("key event"),
-                }
+                },
                 Err(error) => {
                     self.config.log(LogLevel::Verbose, |f| {
                         writeln!(f, "all senders have disconnected: {}", error)
