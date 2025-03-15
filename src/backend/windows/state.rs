@@ -6,13 +6,13 @@ use {
         },
         state::Event,
     },
-    parking_lot::{RwLock, const_rwlock},
+    parking_lot::{Condvar, Mutex, RwLock, const_rwlock},
     std::{
         cell::Cell,
         collections::{HashMap, HashSet},
         mem,
         ptr::{NonNull, null_mut},
-        sync::mpsc,
+        sync::{Arc, atomic::AtomicPtr, mpsc},
         thread,
     },
     winapi::{
@@ -42,15 +42,6 @@ unsafe extern "system" fn key_hook(code: c_int, event_ident: WPARAM, info: LPARA
             .send(Event::Key(String::new()))
             .expect("internal error: EVENT_SENDER got disconnected");
     }
-    //
-    //if let Some(sender) = EVENT_SENDER
-    //    .read()
-    //    .as_ref()
-    //    //.unwrap()
-    //    //.send(Event::Key(String::new()))
-    //{
-    //    sender.send(Event::Key(String::new())).unwrap();
-    //}
 
     return call_next_hook();
 }
@@ -80,27 +71,54 @@ impl State<WindowsWindow, WindowsBackendError> for WindowsBackendState {
             }
         }
 
-        Ok(Self {
-            key_hook: WinapiError::from_return(unsafe {
-                SetWindowsHookExW(WH_KEYBOARD_LL, Some(key_hook), null_mut(), 0)
-            })
-            .map_err(<WinapiError as Into<WindowsBackendError>>::into)?,
-        })
-    }
+        let package = Arc::new((Mutex::new(None), Condvar::new()));
 
-    fn run(&self) {
-        loop {
-            let mut message = unsafe { mem::zeroed() };
+        let thread_package = Arc::clone(&package);
+        thread::spawn(move || {
+            {
+                let (tx, notification) = &*thread_package;
+                *tx.lock() = Some(
+                    WinapiError::from_return(unsafe {
+                        SetWindowsHookExW(WH_KEYBOARD_LL, Some(key_hook), null_mut(), 0)
+                    })
+                    .map(NonNull::as_ptr)
+                    .map(AtomicPtr::new),
+                );
+                notification.notify_one();
+                drop(thread_package);
+            }
 
-            unsafe {
-                GetMessageW(&mut message as *mut _, null_mut(), 0, 0);
+            let mut msg = unsafe { mem::zeroed() };
+            loop {
+                unsafe {
+                    GetMessageW(&mut msg as *mut _, null_mut(), 0, 0);
+                }
+                unsafe {
+                    TranslateMessage(&msg as *const _);
+                }
+                unsafe {
+                    DispatchMessageW(&msg as *const _);
+                }
             }
-            unsafe {
-                TranslateMessage(&message as *const _);
-            }
-            unsafe {
-                DispatchMessageW(&message as *const _);
-            }
+        });
+
+        {
+            let (rx, notification) = &*package;
+            notification.wait(&mut rx.lock());
         }
+
+        Ok(Self {
+            key_hook: Mutex::into_inner(
+                Arc::into_inner(package)
+                    .expect("all references should have been dropped")
+                    .0,
+            )
+            .expect("`notification` should only wake after `rx` is [Some]")
+            .map(AtomicPtr::into_inner)
+            .map(NonNull::new)
+            .map(|ptr| {
+                ptr.expect("internal error: [WinapiError::from_return] should filter null pointers")
+            })?,
+        })
     }
 }

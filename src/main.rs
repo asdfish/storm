@@ -21,6 +21,7 @@ fn main(argc: c_int, argv: *const *const c_char) -> c_int {
         backend::windows::WindowsWindow,
         backend::windows::WindowsBackendError,
     >::new(config)
+    .unwrap()
     .run()
     .unwrap();
 
