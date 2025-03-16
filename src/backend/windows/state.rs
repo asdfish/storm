@@ -17,7 +17,7 @@ use {
     winapi::{
         shared::windef::HHOOK__,
         um::winuser::{
-            DispatchMessageW, GetMessageW, GetForegroundWindow, SetWindowsHookExW,
+            DispatchMessageW, GetForegroundWindow, GetMessageW, SetWindowsHookExW,
             TranslateMessage, UnhookWindowsHookEx, WH_KEYBOARD_LL,
         },
     },
@@ -25,11 +25,11 @@ use {
 
 mod key_hook;
 
-static EVENT_SENDER: RwLock<Option<mpsc::Sender<Result<Event, WindowsBackendError>>>> =
+static EVENT_SENDER: RwLock<Option<mpsc::Sender<Result<Event<WindowsWindow>, WindowsBackendError>>>> =
     const_rwlock(None);
 
-#[repr(transparent)]
 pub struct WindowsBackendState {
+    event_sender: mpsc::Sender<Result<Event<WindowsWindow>, WindowsBackendError>>,
     key_hook: NonNull<HHOOK__>,
 }
 impl Drop for WindowsBackendState {
@@ -41,34 +41,22 @@ impl Drop for WindowsBackendState {
     }
 }
 impl State<WindowsWindow, WindowsBackendError> for WindowsBackendState {
-    fn each_event(state: &mut Storm::<Self, WindowsWindow, WindowsBackendError>) {
-        match NonNull::new(unsafe { GetForegroundWindow() }) {
-            Some(foreground_window) => {
-                let foreground_window = WindowsWindow(foreground_window);
-
-                if !state
-                    .workspaces
-                    .values()
-                    .any(|workspace| workspace.contains(&foreground_window)) {
-                    state.workspaces.entry(state.workspace)
-                        .and_modify(|workspace| { workspace.insert(foreground_window); })
-                        .or_insert_with(|| HashSet::from([foreground_window]));
-                }
-            },
-            None => {},
+    fn each_event(state: &mut Storm<Self, WindowsWindow, WindowsBackendError>) {
+        if let Ok(foreground_window) = WindowsWindow::try_from(unsafe { GetForegroundWindow() }) {
+            state.backend_state.event_sender.send(Ok(Event::AddWindow(state.workspace, foreground_window)));
         }
     }
 
     fn new(
-        _: &mut HashMap<u8, HashSet<WindowsWindow>>,
-        event_sender: mpsc::Sender<Result<Event, WindowsBackendError>>,
+        _: &mut HashMap<u8, Vec<WindowsWindow>>,
+        event_sender: mpsc::Sender<Result<Event<WindowsWindow>, WindowsBackendError>>,
     ) -> Result<Self, WindowsBackendError> {
         {
             let mut event_sender_smuggler = EVENT_SENDER.write();
             if event_sender_smuggler.is_some() {
                 return Err(WindowsBackendError::MultipleKeyboardHooks);
             } else {
-                *event_sender_smuggler = Some(event_sender);
+                *event_sender_smuggler = Some(mpsc::Sender::clone(&event_sender));
             }
         }
 
@@ -100,6 +88,7 @@ impl State<WindowsWindow, WindowsBackendError> for WindowsBackendState {
         });
 
         Ok(Self {
+            event_sender,
             key_hook: rx
                 .recv()
                 .expect("internal error: `tx` should not be dropped")

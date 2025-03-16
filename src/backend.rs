@@ -19,7 +19,7 @@ where
     /// that need to occur every event.
     fn each_event(_: &mut Storm<Self, W, E>) {}
     /// Operate on windows before they get put into [Storm].
-    fn new(_: &mut HashMap<u8, HashSet<W>>, _: Sender<Result<Event, E>>) -> Result<Self, E>;
+    fn new(_: &mut HashMap<u8, Vec<W>>, _: Sender<Result<Event<W>, E>>) -> Result<Self, E>;
 }
 
 pub trait Window {

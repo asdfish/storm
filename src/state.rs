@@ -3,6 +3,7 @@ use {
         backend::{self, Window},
         config::{Config, LogLevel},
     },
+    enum_map::{Enum, EnumMap},
     std::{
         collections::{HashMap, HashSet},
         fmt::Display,
@@ -17,11 +18,11 @@ where
     S: backend::State<W, E>,
     W: Window,
 {
-    backend_state: S,
+    pub backend_state: S,
     config: Config<'a>,
-    rx: mpsc::Receiver<Result<Event, E>>,
+    rx: mpsc::Receiver<Result<Event<W>, E>>,
     pub workspace: u8,
-    pub workspaces: HashMap<u8, HashSet<W>>,
+    pub workspaces: HashMap<u8, Vec<W>>,
 
     _marker: PhantomData<E>,
 }
@@ -50,7 +51,11 @@ where
         loop {
             match self.rx.recv() {
                 Ok(event) => match event {
-                    Ok(Event::Key(key)) => println!("key event: {:?}", key),
+                    Ok(Event::AddWindow(workspace, window)) => {},
+                    Ok(Event::Key(modifiers, key)) => {
+                        println!("key event: {:?}", key);
+                        println!("modifiers, {:?}", modifiers);
+                    },
                     Err(e) => eprintln!("failed to process event: {}", e),
                 },
                 Err(error) => {
@@ -65,6 +70,15 @@ where
     }
 }
 
-pub enum Event {
-    Key(String),
+pub enum Event<W: Window> {
+    AddWindow(u8, W),
+    Key(EnumMap<Modifier, ()>, String),
+}
+
+#[derive(Clone, Copy, Debug, Enum)]
+pub enum Modifier {
+    Alt,
+    Control,
+    Shift,
+    Super,
 }

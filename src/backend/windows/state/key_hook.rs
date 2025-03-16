@@ -5,35 +5,53 @@ use {
             State,
             windows::{WinapiError, WindowsBackendError},
         },
-        state::Event,
+        state::{Event, Modifier},
     },
-    std::{
-        num::NonZeroUsize,
-        ptr::null_mut,
-    },
+    enum_map::EnumMap,
+    std::{num::NonZeroUsize, ptr::null_mut},
     widestring::ustr::U16Str,
     winapi::{
         ctypes::c_int,
         shared::minwindef::{LPARAM, LRESULT, WPARAM},
         um::winuser::{
-                CallNextHookEx, GetKeyboardState, GetKeyState, KBDLLHOOKSTRUCT, ToUnicode, WM_KEYDOWN,
-                VK_MENU,
-                VK_SHIFT,
-            },
+            CallNextHookEx, GetKeyState, GetKeyboardState, KBDLLHOOKSTRUCT, ToUnicode, WM_KEYDOWN, VK_CONTROL,
+            VK_MENU, VK_SHIFT, VK_LWIN, VK_RWIN,
+        },
     },
 };
 
 /// Returns Ok(None) for dead keys.
-fn translate_key(key_diff: LPARAM) -> Result<Option<String>, WindowsBackendError> {
+fn translate_key(key_diff: LPARAM) -> Result<Option<(EnumMap<Modifier, ()>, String)>, WindowsBackendError> {
     let key_diff = unsafe { (key_diff as *mut KBDLLHOOKSTRUCT).as_ref() }
         .ok_or(WindowsBackendError::NullKbdllhookstruct)?;
 
-    [
-        VK_MENU,
-        VK_SHIFT,
+    let modifiers = [
+        (Modifier::Alt, &[VK_MENU] as &[_]),
+        (Modifier::Control, &[VK_CONTROL]),
+        (Modifier::Shift, &[VK_SHIFT]),
+        (Modifier::Super, &[VK_LWIN, VK_RWIN]),
     ]
         .into_iter()
-        .for_each(|vk_key| unsafe { GetKeyState(vk_key); });
+        .map(|(modifier, virt_keys)| {
+            (
+                modifier,
+                virt_keys.iter()
+                    .map(|virt_key| unsafe { GetKeyState(*virt_key) })
+                    .inspect(|state| {
+                        println!("{:?} {:b}", modifier, state);
+                    })
+                    .any(|virt_key| virt_key.signum() == 1)
+            )
+        })
+        .filter_map(|(modifier, pressed)| pressed.then_some((modifier, ())))
+        .collect::<EnumMap<Modifier, ()>>();
+
+    //[
+    //    VK_MENU,
+    //    VK_SHIFT,
+    //]
+    //    .into_iter()
+    //    .for_each(|vk_key| unsafe { GetKeyState(vk_key); });
 
     let mut keyboard_state = [0; 256];
     WinapiError::from_return(unsafe { GetKeyboardState(keyboard_state.as_mut_ptr()) })?;
@@ -57,8 +75,9 @@ fn translate_key(key_diff: LPARAM) -> Result<Option<String>, WindowsBackendError
         return Ok(None);
     };
 
-    Ok(Some(U16Str::from_slice(&buffer[..len.get()])
-        .to_string_lossy()))
+    Ok(Some(
+        (modifiers, U16Str::from_slice(&buffer[..len.get()]).to_string_lossy())
+    ))
 }
 
 pub unsafe extern "system" fn key_hook(
@@ -79,7 +98,7 @@ pub unsafe extern "system" fn key_hook(
                     .expect("internal error: EVENT_SENDER got disconnected");
 
             match translate_key(key_diff) {
-                Ok(Some(key)) => send(Ok(Event::Key(key))),
+                Ok(Some((modifiers, text))) => send(Ok(Event::Key(modifiers, text))),
                 Ok(None) => {},
                 Err(err) => send(Err(err)),
             }
