@@ -8,7 +8,7 @@ use {
     },
     parking_lot::{RwLock, const_rwlock},
     std::{
-        collections::{HashMap, HashSet},
+        collections::HashMap,
         mem,
         ptr::{NonNull, null_mut},
         sync::{atomic::AtomicPtr, mpsc},

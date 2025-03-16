@@ -4,7 +4,7 @@ pub mod windows;
 use {
     crate::state::{Event, Storm},
     std::{
-        collections::{HashMap, HashSet},
+        collections::HashMap,
         fmt::Display,
         sync::mpsc::Sender,
     },
