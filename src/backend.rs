@@ -2,8 +2,8 @@
 pub mod windows;
 
 use {
-    crate::state::{Event, Storm},
-    std::{collections::HashMap, fmt::Display, sync::mpsc::Sender},
+    crate::state::{EventSender, Storm},
+    std::{collections::HashMap, fmt::Display},
 };
 
 pub trait State<W, E>: Sized
@@ -15,7 +15,7 @@ where
     /// that need to occur every event.
     fn each_event(_: &mut Storm<Self, W, E>) {}
     /// Operate on windows before they get put into [Storm].
-    fn new(_: &mut HashMap<u8, Vec<W>>, _: Sender<Result<Event<W>, E>>) -> Result<Self, E>;
+    fn new(_: &mut HashMap<u8, Vec<W>>, _: EventSender<W, E>) -> Result<Self, E>;
 }
 
 pub trait Window {

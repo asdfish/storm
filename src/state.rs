@@ -12,6 +12,9 @@ use {
     },
 };
 
+pub type EventSender<W, E> = mpsc::Sender<Result<Event<W>, E>>;
+pub type EventReceiver<W, E> = mpsc::Receiver<Result<Event<W>, E>>;
+
 pub struct Storm<'a, S, W, E>
 where
     E: Display,
@@ -20,7 +23,7 @@ where
 {
     pub backend_state: S,
     config: Config<'a>,
-    rx: mpsc::Receiver<Result<Event<W>, E>>,
+    rx: EventReceiver<W, E>,
     pub workspace: u8,
     pub workspaces: HashMap<u8, Vec<W>>,
 

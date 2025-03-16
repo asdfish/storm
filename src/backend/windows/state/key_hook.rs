@@ -18,10 +18,13 @@ use {
     },
 };
 
+type Modifiers = EnumMap<Modifier, ()>;
+type KeyPress = (Modifiers, String);
+
 /// Returns Ok(None) for dead keys.
 fn translate_key(
     key_diff: LPARAM,
-) -> Result<Option<(EnumMap<Modifier, ()>, String)>, WindowsBackendError> {
+) -> Result<Option<KeyPress>, WindowsBackendError> {
     let key_diff = unsafe { (key_diff as *mut KBDLLHOOKSTRUCT).as_ref() }
         .ok_or(WindowsBackendError::NullKbdllhookstruct)?;
 
@@ -45,7 +48,7 @@ fn translate_key(
         )
     })
     .filter_map(|(modifier, pressed)| pressed.then_some((modifier, ())))
-    .collect::<EnumMap<Modifier, ()>>();
+    .collect::<Modifiers>();
 
     //[
     //    VK_MENU,
@@ -107,5 +110,5 @@ pub unsafe extern "system" fn key_hook(
         }
     }
 
-    return call_next_hook();
+    call_next_hook()
 }

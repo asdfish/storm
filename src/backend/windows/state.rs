@@ -5,7 +5,7 @@ use {
             windows::{WinapiError, WindowsBackendError, WindowsWindow},
         },
         error,
-        state::{Event, Storm},
+        state::{Event, EventSender, Storm},
     },
     parking_lot::{RwLock, const_rwlock},
     std::{
@@ -27,11 +27,11 @@ use {
 mod key_hook;
 
 static EVENT_SENDER: RwLock<
-    Option<mpsc::Sender<Result<Event<WindowsWindow>, WindowsBackendError>>>,
+    Option<EventSender<WindowsWindow, WindowsBackendError>>,
 > = const_rwlock(None);
 
 pub struct WindowsBackendState {
-    event_sender: mpsc::Sender<Result<Event<WindowsWindow>, WindowsBackendError>>,
+    event_sender: EventSender<WindowsWindow, WindowsBackendError>,
     key_hook: NonNull<HHOOK__>,
 }
 impl Drop for WindowsBackendState {
@@ -55,14 +55,14 @@ impl State<WindowsWindow, WindowsBackendError> for WindowsBackendState {
 
     fn new(
         _: &mut HashMap<u8, Vec<WindowsWindow>>,
-        event_sender: mpsc::Sender<Result<Event<WindowsWindow>, WindowsBackendError>>,
+        event_sender: EventSender<WindowsWindow, WindowsBackendError>,
     ) -> Result<Self, WindowsBackendError> {
         {
             let mut event_sender_smuggler = EVENT_SENDER.write();
             if event_sender_smuggler.is_some() {
                 return Err(WindowsBackendError::MultipleKeyboardHooks);
             } else {
-                *event_sender_smuggler = Some(mpsc::Sender::clone(&event_sender));
+                *event_sender_smuggler = Some(EventSender::clone(&event_sender));
             }
         }
 

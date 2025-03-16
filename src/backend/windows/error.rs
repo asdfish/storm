@@ -73,7 +73,7 @@ impl WinapiError {
     where
         T: AttemptInto,
     {
-        value.attempt_into().ok_or_else(|| Self::new_unchecked())
+        value.attempt_into().ok_or_else(Self::new_unchecked)
     }
 
     #[must_use]
