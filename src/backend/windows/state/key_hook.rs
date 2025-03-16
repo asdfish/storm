@@ -5,6 +5,7 @@ use {
             State,
             windows::{WinapiError, WindowsBackendError},
         },
+        error,
         state::{Event, Modifier},
     },
     enum_map::EnumMap,
@@ -95,7 +96,7 @@ pub unsafe extern "system" fn key_hook(
         if let Some(sender) = EVENT_SENDER.read().as_ref() {
             let send = |event|
                 sender.send(event)
-                    .expect("internal error: EVENT_SENDER got disconnected");
+                    .expect(error::CLOSED_CHANNEL);
 
             match translate_key(key_diff) {
                 Ok(Some((modifiers, text))) => send(Ok(Event::Key(modifiers, text))),

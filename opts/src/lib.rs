@@ -58,7 +58,7 @@ impl<'arg> FlagInner<'arg> {
             (
                 FlagInner {
                     kind: Flag::Short(arg.next().expect(
-                        "the check above should ensure that there is always more than 1 characters",
+                        "internal error: the check above should ensure that there is always more at least 2 characters",
                     )),
                     value: arg.as_str(),
                 },
@@ -124,7 +124,7 @@ impl<'arg> Iterator for Argument<'arg> {
             }) => {
                 match self.text.chars()
                     .next()
-                    .expect("checking whether or not text is empty is done above, which should ensure that this is unreachable") {
+                    .expect("internal error: empty strings are checked above") {
                     '=' => None,
                     ch => {
                         self.text = &self.text[ch.len_utf8()..];

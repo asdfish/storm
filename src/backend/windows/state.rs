@@ -4,6 +4,7 @@ use {
             State,
             windows::{WinapiError, WindowsBackendError, WindowsWindow},
         },
+        error,
         state::{Event, Storm},
     },
     parking_lot::{RwLock, const_rwlock},
@@ -44,7 +45,7 @@ impl State<WindowsWindow, WindowsBackendError> for WindowsBackendState {
     fn each_event(state: &mut Storm<Self, WindowsWindow, WindowsBackendError>) {
         if let Ok(foreground_window) = WindowsWindow::try_from(unsafe { GetForegroundWindow() }) {
             state.backend_state.event_sender.send(Ok(Event::AddWindow(state.workspace, foreground_window)))
-                .expect("internal error: `rx` should not be dropped yet");
+                .expect(error::CLOSED_CHANNEL);
         }
     }
 
@@ -72,7 +73,7 @@ impl State<WindowsWindow, WindowsBackendError> for WindowsBackendState {
                 .map(NonNull::as_ptr)
                 .map(AtomicPtr::new),
             )
-            .expect("internal error: `rx` should not be dropped yet");
+                .expect(error::CLOSED_CHANNEL);
 
             let mut msg = unsafe { mem::zeroed() };
             loop {
@@ -92,7 +93,7 @@ impl State<WindowsWindow, WindowsBackendError> for WindowsBackendState {
             event_sender,
             key_hook: rx
                 .recv()
-                .expect("internal error: `tx` should not be dropped")
+                .expect(error::CLOSED_CHANNEL)
                 .map(AtomicPtr::into_inner)
                 .map(NonNull::new)
                 .map(|ptr| {
