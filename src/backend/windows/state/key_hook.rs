@@ -1,10 +1,7 @@
 use {
     super::EVENT_SENDER,
     crate::{
-        backend::{
-            State,
-            windows::{WinapiError, WindowsBackendError},
-        },
+        backend::windows::{WinapiError, WindowsBackendError},
         error,
         state::{Event, Modifier},
     },

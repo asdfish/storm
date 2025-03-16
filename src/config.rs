@@ -128,6 +128,7 @@ Defaults to stderr if not set or printing fails."
                         None
                     }
                 });
+            self.apply(argv);
         }
     }
 
