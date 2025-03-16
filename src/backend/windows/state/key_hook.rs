@@ -3,28 +3,24 @@ use {
     crate::{
         backend::windows::{WinapiError, WindowsBackendError},
         error,
-        state::{Event, Modifier},
+        state::{Event, Modifier, Modifiers},
     },
-    enum_map::EnumMap,
     std::{num::NonZeroUsize, ptr::null_mut},
     widestring::ustr::U16Str,
     winapi::{
         ctypes::c_int,
         shared::minwindef::{LPARAM, LRESULT, WPARAM},
         um::winuser::{
-            CallNextHookEx, GetKeyState, GetKeyboardState, KBDLLHOOKSTRUCT, ToUnicode, VK_CONTROL,
+            CallNextHookEx, GetKeyState, GetKeyboardState, ToUnicode, KBDLLHOOKSTRUCT, VK_CONTROL,
             VK_LWIN, VK_MENU, VK_RWIN, VK_SHIFT, WM_KEYDOWN,
         },
     },
 };
 
-type Modifiers = EnumMap<Modifier, ()>;
 type KeyPress = (Modifiers, String);
 
 /// Returns Ok(None) for dead keys.
-fn translate_key(
-    key_diff: LPARAM,
-) -> Result<Option<KeyPress>, WindowsBackendError> {
+fn translate_key(key_diff: LPARAM) -> Result<Option<KeyPress>, WindowsBackendError> {
     let key_diff = unsafe { (key_diff as *mut KBDLLHOOKSTRUCT).as_ref() }
         .ok_or(WindowsBackendError::NullKbdllhookstruct)?;
 
@@ -34,28 +30,18 @@ fn translate_key(
         (Modifier::Shift, &[VK_SHIFT]),
         (Modifier::Super, &[VK_LWIN, VK_RWIN]),
     ]
-    .into_iter()
-    .map(|(modifier, virt_keys)| {
-        (
+        .into_iter()
+        .map(|(modifier, virt_keys)| {
+            (
             modifier,
             virt_keys
                 .iter()
-                .map(|virt_key| unsafe { GetKeyState(*virt_key) })
-                .inspect(|state| {
-                    println!("{:?} {:b}", modifier, state);
-                })
-                .any(|virt_key| virt_key.signum() == 1),
-        )
-    })
-    .filter_map(|(modifier, pressed)| pressed.then_some((modifier, ())))
-    .collect::<Modifiers>();
-
-    //[
-    //    VK_MENU,
-    //    VK_SHIFT,
-    //]
-    //    .into_iter()
-    //    .for_each(|vk_key| unsafe { GetKeyState(vk_key); });
+                .copied()
+                .map(|virt_key| unsafe { GetKeyState(virt_key) })
+                .any(|virt_key| virt_key & (1 << 15) != 0),
+            )
+        })
+        .collect::<Modifiers>();
 
     let mut keyboard_state = [0; 256];
     WinapiError::from_return(unsafe { GetKeyboardState(keyboard_state.as_mut_ptr()) })?;

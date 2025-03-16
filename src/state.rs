@@ -14,6 +14,7 @@ use {
 
 pub type EventSender<W, E> = mpsc::Sender<Result<Event<W>, E>>;
 pub type EventReceiver<W, E> = mpsc::Receiver<Result<Event<W>, E>>;
+pub type Modifiers = EnumMap<Modifier, bool>;
 
 pub struct Storm<'a, S, W, E>
 where
@@ -91,7 +92,7 @@ where
 
 pub enum Event<W: Window> {
     AddWindow(u8, W),
-    Key(EnumMap<Modifier, ()>, String),
+    Key(Modifiers, String),
 }
 
 #[derive(Clone, Copy, Debug, Enum)]
