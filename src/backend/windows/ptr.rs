@@ -1,14 +1,7 @@
-use {
-    std::{
-        convert::{AsRef, AsMut},
-        ops::{Deref, DerefMut},
-        ptr::NonNull,
-    },
-    winapi::{
+use winapi::{
         ctypes::c_void,
         um::winbase::LocalFree,
-    },
-};
+    };
 
 #[repr(transparent)]
 /// The pointer must be allocated with [winapi::um::winbase::LocalAlloc].

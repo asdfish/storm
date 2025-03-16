@@ -11,13 +11,12 @@ use {
     },
     widestring::ucstr::U16CStr,
     winapi::{
-        ctypes::c_void,
         shared::minwindef::DWORD,
         um::{
             errhandlingapi::GetLastError,
             winbase::{
                 FORMAT_MESSAGE_ALLOCATE_BUFFER, FORMAT_MESSAGE_FROM_SYSTEM,
-                FORMAT_MESSAGE_IGNORE_INSERTS, FormatMessageW, LocalFree,
+                FORMAT_MESSAGE_IGNORE_INSERTS, FormatMessageW,
             },
             winnt::{LANG_NEUTRAL, LPWSTR, MAKELANGID, SUBLANG_DEFAULT, WCHAR},
         },
