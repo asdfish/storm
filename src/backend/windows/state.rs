@@ -43,7 +43,8 @@ impl Drop for WindowsBackendState {
 impl State<WindowsWindow, WindowsBackendError> for WindowsBackendState {
     fn each_event(state: &mut Storm<Self, WindowsWindow, WindowsBackendError>) {
         if let Ok(foreground_window) = WindowsWindow::try_from(unsafe { GetForegroundWindow() }) {
-            state.backend_state.event_sender.send(Ok(Event::AddWindow(state.workspace, foreground_window)));
+            state.backend_state.event_sender.send(Ok(Event::AddWindow(state.workspace, foreground_window)))
+                .expect("internal error: `rx` should not be dropped yet");
         }
     }
 

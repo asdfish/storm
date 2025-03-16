@@ -8,6 +8,7 @@ use {
         error::Error as StdError,
         fmt::{self, Display, Formatter},
         num::{NonZeroUsize, TryFromIntError},
+        ptr::NonNull,
         sync::atomic::{AtomicPtr, Ordering},
     },
     widestring::ustring::U16String,
@@ -43,6 +44,11 @@ impl TryFrom<HWND> for WindowsWindow {
         } else {
             Ok(Self(AtomicPtr::new(handle)))
         }
+    }
+}
+impl From<NonNull<HWND__>> for WindowsWindow {
+    fn from(handle: NonNull<HWND__>) -> Self {
+        Self(AtomicPtr::new(handle.as_ptr()))
     }
 }
 #[derive(Debug)]

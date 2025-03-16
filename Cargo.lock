@@ -102,10 +102,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "raii"
-version = "0.1.0"
-
-[[package]]
 name = "redox_syscall"
 version = "0.5.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -133,7 +129,6 @@ dependencies = [
  "enum-map",
  "opts",
  "parking_lot",
- "raii",
  "widestring",
  "winapi",
 ]

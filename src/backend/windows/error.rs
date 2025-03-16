@@ -1,5 +1,5 @@
 use {
-    raii::Guard,
+    crate::backend::windows::LocalPtr,
     std::{
         error::Error as StdError,
         fmt::{self, Display, Formatter},
@@ -25,13 +25,13 @@ use {
 };
 
 /// Marks a return type that can indicate a [WinapiError].
-pub trait ReturnError: Sized {
+pub trait AttemptInto: Sized {
     type Into;
     fn attempt_into(self) -> Option<Self::Into>;
 }
 macro_rules! impl_return_error_for_number {
     ($num:ty, $non_zero:ty) => {
-        impl ReturnError for $num {
+        impl AttemptInto for $num {
             type Into = $non_zero;
             fn attempt_into(self) -> Option<$non_zero> {
                 <$non_zero>::new(self)
@@ -51,7 +51,7 @@ impl_return_error_for_number!(u32, NonZeroU32);
 impl_return_error_for_number!(u64, NonZeroU64);
 impl_return_error_for_number!(u128, NonZeroU128);
 impl_return_error_for_number!(usize, NonZeroUsize);
-impl<T> ReturnError for *mut T {
+impl<T> AttemptInto for *mut T {
     type Into = NonNull<T>;
     fn attempt_into(self) -> Option<NonNull<T>> {
         NonNull::new(self)
@@ -60,19 +60,19 @@ impl<T> ReturnError for *mut T {
 
 #[derive(Debug)]
 #[repr(transparent)]
-/// Errors from windows api functions. For all possible errors in the windows backend, see
-/// [WindowsBackendError].
+/// Errors from windows api functions.
 ///
-/// Contains the error code similar to errno.
+/// For all possible errors in the windows backend, see
+/// [WindowsBackendError].
 ///
 /// Error code 0 is for when operations return successfully, however it relies on the callee using
 /// `SetLastError` which is unreliable, so this cannot be represented with a `NonZero<DWORD>`.
 pub struct WinapiError(DWORD);
 
 impl WinapiError {
-    pub fn from_return<T>(value: T) -> Result<<T as ReturnError>::Into, Self>
+    pub fn from_return<T>(value: T) -> Result<<T as AttemptInto>::Into, Self>
     where
-        T: ReturnError,
+        T: AttemptInto,
     {
         value.attempt_into().ok_or_else(|| Self::new_unchecked())
     }
@@ -95,16 +95,8 @@ impl WinapiError {
 
 impl Display for WinapiError {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        let mut str = Guard::<*mut WCHAR, _>::new(null_mut(), |ptr| {
-            if !ptr.is_null() {
-                // SAFETY: null pointer check above
-                unsafe {
-                    LocalFree(*ptr as *mut c_void);
-                }
-            }
-        });
+        let mut str = LocalPtr::<WCHAR>(null_mut());
 
-        // SAFETY: There is no way to make this safe since windows is unsafe.
         let Some(len) = unsafe {
             FormatMessageW(
                 FORMAT_MESSAGE_ALLOCATE_BUFFER
@@ -113,7 +105,7 @@ impl Display for WinapiError {
                 null_mut(),
                 self.0,
                 MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT).into(),
-                str.as_mut() as *mut *mut WCHAR as LPWSTR,
+                &mut str.0 as *mut *mut WCHAR as LPWSTR,
                 0,
                 null_mut(),
             )
@@ -127,10 +119,14 @@ impl Display for WinapiError {
             );
         };
 
-        // SAFETY: There is no way to make this safe since windows is unsafe.
-        match unsafe { U16CStr::from_ptr(*str.as_ref() as *const _, len.get()) } {
-            Ok(msg) => write!(f, "{}", msg.display()),
-            Err(err) => write!(f, "failed to get error message: {}", err),
+        if str.0.is_null() {
+            write!(f, "failed to get error message: allocation failed")
+        } else {
+            // SAFETY: `str.0` is not null
+            match unsafe { U16CStr::from_ptr(str.0, len.get()) } {
+                Ok(msg) => write!(f, "{}", msg.display()),
+                Err(err) => write!(f, "failed to get error message: {}", err),
+            }
         }
     }
 }

@@ -5,7 +5,7 @@ use {
     },
     enum_map::{Enum, EnumMap},
     std::{
-        collections::HashMap,
+        collections::{hash_map, HashMap},
         fmt::Display,
         marker::PhantomData,
         sync::mpsc,
@@ -32,6 +32,8 @@ where
     S: backend::State<W, E>,
     W: Window,
 {
+    fn tile_windows(&self) {}
+
     pub fn new(config: Config<'a>) -> Result<Self, E> {
         let (tx, rx) = mpsc::channel();
         let mut workspaces = HashMap::new();
@@ -47,15 +49,29 @@ where
             _marker: PhantomData,
         })
     }
+
     pub fn run(mut self) -> Result<(), E> {
         loop {
             match self.rx.recv() {
                 Ok(event) => match event {
-                    Ok(Event::AddWindow(workspace, window)) => {},
+                    Ok(Event::AddWindow(workspace, window)) => {
+                        match self.workspaces.entry(workspace) {
+                            hash_map::Entry::Occupied(mut entry) => {
+                                entry.get_mut().push(window);
+                            }
+                            hash_map::Entry::Vacant(entry) => {
+                                entry.insert(Vec::from([window]));
+                            }
+                        }
+
+                        if workspace == self.workspace {
+                            self.tile_windows();
+                        }
+                    }
                     Ok(Event::Key(modifiers, key)) => {
                         println!("key event: {:?}", key);
                         println!("modifiers, {:?}", modifiers);
-                    },
+                    }
                     Err(e) => eprintln!("failed to process event: {}", e),
                 },
                 Err(error) => {
