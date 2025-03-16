@@ -4,9 +4,9 @@ use {
         windows::{WinapiError, WindowsBackendError},
     },
     std::{
-        mem,
         error::Error as StdError,
         fmt::{self, Display, Formatter},
+        mem,
         num::{NonZeroUsize, TryFromIntError},
         ptr::NonNull,
         sync::atomic::{AtomicPtr, Ordering},
@@ -55,7 +55,10 @@ impl From<NonNull<HWND__>> for WindowsWindow {
 pub struct NullHwndError;
 impl Display for NullHwndError {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(f, "internal error: [WindowsWindow] must not contain null pointers")
+        write!(
+            f,
+            "internal error: [WindowsWindow] must not contain null pointers"
+        )
     }
 }
 impl StdError for NullHwndError {}
@@ -103,8 +106,7 @@ impl Window for WindowsWindow {
 
     fn title(&self) -> Result<U16String, WindowsBackendError> {
         let length: NonZeroUsize =
-            WinapiError::from_return(unsafe { GetWindowTextLengthW(self.as_ptr()) })?
-                .try_into()?;
+            WinapiError::from_return(unsafe { GetWindowTextLengthW(self.as_ptr()) })?.try_into()?;
 
         let mut str: Box<[WCHAR]> = vec![0; length.get()].into_boxed_slice();
 

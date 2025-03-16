@@ -3,11 +3,7 @@ pub mod windows;
 
 use {
     crate::state::{Event, Storm},
-    std::{
-        collections::HashMap,
-        fmt::Display,
-        sync::mpsc::Sender,
-    },
+    std::{collections::HashMap, fmt::Display, sync::mpsc::Sender},
 };
 
 pub trait State<W, E>: Sized

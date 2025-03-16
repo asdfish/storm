@@ -15,14 +15,16 @@ use {
         ctypes::c_int,
         shared::minwindef::{LPARAM, LRESULT, WPARAM},
         um::winuser::{
-            CallNextHookEx, GetKeyState, GetKeyboardState, KBDLLHOOKSTRUCT, ToUnicode, WM_KEYDOWN, VK_CONTROL,
-            VK_MENU, VK_SHIFT, VK_LWIN, VK_RWIN,
+            CallNextHookEx, GetKeyState, GetKeyboardState, KBDLLHOOKSTRUCT, ToUnicode, VK_CONTROL,
+            VK_LWIN, VK_MENU, VK_RWIN, VK_SHIFT, WM_KEYDOWN,
         },
     },
 };
 
 /// Returns Ok(None) for dead keys.
-fn translate_key(key_diff: LPARAM) -> Result<Option<(EnumMap<Modifier, ()>, String)>, WindowsBackendError> {
+fn translate_key(
+    key_diff: LPARAM,
+) -> Result<Option<(EnumMap<Modifier, ()>, String)>, WindowsBackendError> {
     let key_diff = unsafe { (key_diff as *mut KBDLLHOOKSTRUCT).as_ref() }
         .ok_or(WindowsBackendError::NullKbdllhookstruct)?;
 
@@ -32,20 +34,21 @@ fn translate_key(key_diff: LPARAM) -> Result<Option<(EnumMap<Modifier, ()>, Stri
         (Modifier::Shift, &[VK_SHIFT]),
         (Modifier::Super, &[VK_LWIN, VK_RWIN]),
     ]
-        .into_iter()
-        .map(|(modifier, virt_keys)| {
-            (
-                modifier,
-                virt_keys.iter()
-                    .map(|virt_key| unsafe { GetKeyState(*virt_key) })
-                    .inspect(|state| {
-                        println!("{:?} {:b}", modifier, state);
-                    })
-                    .any(|virt_key| virt_key.signum() == 1)
-            )
-        })
-        .filter_map(|(modifier, pressed)| pressed.then_some((modifier, ())))
-        .collect::<EnumMap<Modifier, ()>>();
+    .into_iter()
+    .map(|(modifier, virt_keys)| {
+        (
+            modifier,
+            virt_keys
+                .iter()
+                .map(|virt_key| unsafe { GetKeyState(*virt_key) })
+                .inspect(|state| {
+                    println!("{:?} {:b}", modifier, state);
+                })
+                .any(|virt_key| virt_key.signum() == 1),
+        )
+    })
+    .filter_map(|(modifier, pressed)| pressed.then_some((modifier, ())))
+    .collect::<EnumMap<Modifier, ()>>();
 
     //[
     //    VK_MENU,
@@ -76,9 +79,10 @@ fn translate_key(key_diff: LPARAM) -> Result<Option<(EnumMap<Modifier, ()>, Stri
         return Ok(None);
     };
 
-    Ok(Some(
-        (modifiers, U16Str::from_slice(&buffer[..len.get()]).to_string_lossy())
-    ))
+    Ok(Some((
+        modifiers,
+        U16Str::from_slice(&buffer[..len.get()]).to_string_lossy(),
+    )))
 }
 
 pub unsafe extern "system" fn key_hook(

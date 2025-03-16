@@ -26,8 +26,9 @@ use {
 
 mod key_hook;
 
-static EVENT_SENDER: RwLock<Option<mpsc::Sender<Result<Event<WindowsWindow>, WindowsBackendError>>>> =
-    const_rwlock(None);
+static EVENT_SENDER: RwLock<
+    Option<mpsc::Sender<Result<Event<WindowsWindow>, WindowsBackendError>>>,
+> = const_rwlock(None);
 
 pub struct WindowsBackendState {
     event_sender: mpsc::Sender<Result<Event<WindowsWindow>, WindowsBackendError>>,
@@ -44,7 +45,10 @@ impl Drop for WindowsBackendState {
 impl State<WindowsWindow, WindowsBackendError> for WindowsBackendState {
     fn each_event(state: &mut Storm<Self, WindowsWindow, WindowsBackendError>) {
         if let Ok(foreground_window) = WindowsWindow::try_from(unsafe { GetForegroundWindow() }) {
-            state.backend_state.event_sender.send(Ok(Event::AddWindow(state.workspace, foreground_window)))
+            state
+                .backend_state
+                .event_sender
+                .send(Ok(Event::AddWindow(state.workspace, foreground_window)))
                 .expect(error::CLOSED_CHANNEL);
         }
     }
@@ -73,7 +77,7 @@ impl State<WindowsWindow, WindowsBackendError> for WindowsBackendState {
                 .map(NonNull::as_ptr)
                 .map(AtomicPtr::new),
             )
-                .expect(error::CLOSED_CHANNEL);
+            .expect(error::CLOSED_CHANNEL);
 
             let mut msg = unsafe { mem::zeroed() };
             loop {

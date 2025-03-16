@@ -5,7 +5,7 @@ use {
     },
     enum_map::{Enum, EnumMap},
     std::{
-        collections::{hash_map, HashMap},
+        collections::{HashMap, hash_map},
         fmt::Display,
         marker::PhantomData,
         sync::mpsc,

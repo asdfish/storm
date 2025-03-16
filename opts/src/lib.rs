@@ -113,25 +113,29 @@ impl<'arg> Iterator for Argument<'arg> {
 
         match self.last {
             Some(FlagInner {
-                kind: Flag::Separator
-                | Flag::Long(_)
-                | Flag::Value,
+                kind: Flag::Separator | Flag::Long(_) | Flag::Value,
                 ..
             }) => None,
             Some(FlagInner {
                 kind: Flag::Short(_),
                 ..
             }) => {
-                match self.text.chars()
+                match self
+                    .text
+                    .chars()
                     .next()
-                    .expect("internal error: empty strings are checked above") {
+                    .expect("internal error: empty strings are checked above")
+                {
                     '=' => None,
                     ch => {
                         self.text = &self.text[ch.len_utf8()..];
-                        self.last = Some(FlagInner{ kind: Flag::Short(ch), value: self.text });
+                        self.last = Some(FlagInner {
+                            kind: Flag::Short(ch),
+                            value: self.text,
+                        });
 
                         self.last
-                    },
+                    }
                 }
             }
             None => {
