@@ -11,7 +11,7 @@ use {
         ctypes::c_int,
         shared::minwindef::{LPARAM, LRESULT, WPARAM},
         um::winuser::{
-            CallNextHookEx, GetKeyState, GetKeyboardState, ToUnicode, KBDLLHOOKSTRUCT, VK_CONTROL,
+            CallNextHookEx, GetKeyState, GetKeyboardState, KBDLLHOOKSTRUCT, ToUnicode, VK_CONTROL,
             VK_LWIN, VK_MENU, VK_RWIN, VK_SHIFT, WM_KEYDOWN,
         },
     },
@@ -30,18 +30,18 @@ fn translate_key(key_diff: LPARAM) -> Result<Option<KeyPress>, WindowsBackendErr
         (Modifier::Shift, &[VK_SHIFT]),
         (Modifier::Super, &[VK_LWIN, VK_RWIN]),
     ]
-        .into_iter()
-        .map(|(modifier, virt_keys)| {
-            (
+    .into_iter()
+    .map(|(modifier, virt_keys)| {
+        (
             modifier,
             virt_keys
                 .iter()
                 .copied()
                 .map(|virt_key| unsafe { GetKeyState(virt_key) })
                 .any(|virt_key| virt_key & (1 << 15) != 0),
-            )
-        })
-        .collect::<Modifiers>();
+        )
+    })
+    .collect::<Modifiers>();
 
     let mut keyboard_state = [0; 256];
     WinapiError::from_return(unsafe { GetKeyboardState(keyboard_state.as_mut_ptr()) })?;

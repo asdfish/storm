@@ -26,9 +26,8 @@ use {
 
 mod key_hook;
 
-static EVENT_SENDER: RwLock<
-    Option<EventSender<WindowsWindow, WindowsBackendError>>,
-> = const_rwlock(None);
+static EVENT_SENDER: RwLock<Option<EventSender<WindowsWindow, WindowsBackendError>>> =
+    const_rwlock(None);
 
 pub struct WindowsBackendState {
     event_sender: EventSender<WindowsWindow, WindowsBackendError>,
