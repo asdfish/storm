@@ -5,7 +5,7 @@ use {
     },
     enum_map::{Enum, EnumMap},
     std::{
-        collections::{HashMap, hash_map},
+        collections::{hash_map, HashMap},
         fmt::Display,
         marker::PhantomData,
         sync::mpsc,
@@ -76,7 +76,9 @@ where
                         println!("key event: {:?}", key);
                         println!("modifiers, {:?}", modifiers);
                     }
-                    Err(e) => eprintln!("failed to process event: {}", e),
+                    Err(e) => self.config.log(LogLevel::Quiet, |f| {
+                        writeln!(f, "failed to process event: {}", e)
+                    }),
                 },
                 Err(error) => {
                     self.config.log(LogLevel::Verbose, |f| {
