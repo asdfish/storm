@@ -35,6 +35,7 @@ pub trait Window {
     fn set_visibility(&mut self, _: bool) -> Result<(), Self::Error>;
 }
 
+#[allow(dead_code)]
 pub struct Rect {
     x: i16,
     y: i16,
