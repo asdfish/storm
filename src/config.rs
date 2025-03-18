@@ -1,10 +1,11 @@
 mod opts;
 
 use {
+    enum_map::Enum,
     opts::{Flag, Parser},
     std::{
         cell::{RefCell, RefMut},
-        cmp::PartialOrd,
+        cmp::{Ordering, PartialOrd},
         ffi::{CStr, c_char, c_int},
         fs::File,
         io::{self, Write, stderr},
@@ -13,13 +14,23 @@ use {
     },
 };
 
-#[derive(Clone, Copy, Default, PartialEq, PartialOrd)]
+#[cfg_attr(test, derive(Enum))]
+#[derive(Clone, Copy, Default, PartialEq)]
 #[repr(u8)]
 pub enum LogLevel {
     None,
     #[default]
     Quiet,
     Verbose,
+}
+impl PartialOrd for LogLevel {
+    fn partial_cmp(&self, rhs: &Self) -> Option<Ordering> {
+        match (self, rhs) {
+            (&Self::None, _) |
+            (_, &Self::None) => None,
+            _ =>  (*self as u8).partial_cmp(&(*rhs as u8)),
+        }
+    }
 }
 impl LogLevel {
     /// Compares the current log level with `level` and executes the function if the level is
@@ -30,7 +41,7 @@ impl LogLevel {
         file: &mut dyn Write,
         print: F,
     ) {
-        if *self != Self::None && level >= *self {
+        if *self >= level {
             if let Err(err) = print(file) {
                 eprintln!("error while logging: {}", err);
             }
@@ -159,32 +170,33 @@ Defaults to stderr if not set or printing fails."
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use {
+        enum_map::EnumMap,
+        super::*,
+    };
+
+    fn log_map(log_level: LogLevel, map: EnumMap<LogLevel, bool>) {
+        let config = Config {
+            log_level,
+            ..Default::default()
+        };
+
+        map.into_iter()
+            .for_each(|(level, expected)| {
+                let mut logged = false;
+                config.log(level, |_| {
+                    logged = true;
+                    Ok(())
+                });
+
+                assert_eq!(logged, expected);
+            });
+    }
 
     #[test]
     fn logging() {
-        let mut config = Config::default();
-        config.apply(["-vnone"].into_iter());
-
-        let mut logged = false;
-        config.log(LogLevel::None, |_| {
-            logged = true;
-            Ok(())
-        });
-        assert!(!logged);
-
-        let mut logged = false;
-        config.log(LogLevel::Quiet, |_| {
-            logged = true;
-            Ok(())
-        });
-        assert!(logged);
-
-        let mut logged = false;
-        config.log(LogLevel::Verbose, |_| {
-            logged = true;
-            Ok(())
-        });
-        assert!(logged);
+        log_map(LogLevel::None, EnumMap::from_fn(|_| false));
+        log_map(LogLevel::Quiet, EnumMap::from_fn(|level| matches!(level, LogLevel::Quiet)));
+        log_map(LogLevel::Verbose, EnumMap::from_fn(|level| !matches!(level, LogLevel::None)));
     }
 }
