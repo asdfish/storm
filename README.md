@@ -4,6 +4,6 @@ Window manager that forcefully rearranges your windows on many platforms.
 
 # Progress
  - [ ] Windows
- - [ ] Linux (wayland winit)
- - [ ] Linux (wayland udev)
+ - [ ] *nix (not Os X) (wayland winit)
+ - [ ] *nix (not Os X) (wayland udev)
  - [ ] Os X
