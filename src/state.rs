@@ -2,8 +2,10 @@ use {
     crate::{
         backend::{self, Window},
         config::{Config, LogLevel},
+        error,
     },
     enum_map::{Enum, EnumMap},
+    oneshot,
     std::{
         collections::{hash_map, HashMap},
         fmt::Display,
@@ -72,9 +74,10 @@ where
                             self.tile_windows();
                         }
                     }
-                    Ok(Event::Key(modifiers, key)) => {
+                    Ok(Event::Key(consume, modifiers, key)) => {
                         println!("key event: {:?}", key);
                         println!("modifiers, {:?}", modifiers);
+                        consume.send(false).expect(error::CLOSED_CHANNEL);
                     }
                     Err(e) => self.config.log(LogLevel::Quiet, |f| {
                         writeln!(f, "failed to process event: {}", e)
@@ -94,7 +97,7 @@ where
 
 pub enum Event<W: Window> {
     AddWindow(u8, W),
-    Key(Modifiers, String),
+    Key(oneshot::Sender<bool>, Modifiers, String),
 }
 
 #[derive(Clone, Copy, Debug, Enum)]

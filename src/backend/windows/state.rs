@@ -12,7 +12,7 @@ use {
         collections::HashMap,
         mem,
         ptr::{NonNull, null_mut},
-        sync::{atomic::AtomicPtr, mpsc},
+        sync::atomic::AtomicPtr,
         thread,
     },
     winapi::{
@@ -65,7 +65,7 @@ impl State<WindowsWindow, WindowsBackendError> for WindowsBackendState {
             }
         }
 
-        let (tx, rx) = mpsc::sync_channel(1);
+        let (tx, rx) = oneshot::channel();
 
         thread::spawn(move || {
             // the hook must be set on the same thread as the message sending

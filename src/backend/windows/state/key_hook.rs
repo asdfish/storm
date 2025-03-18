@@ -11,7 +11,7 @@ use {
         ctypes::c_int,
         shared::minwindef::{LPARAM, LRESULT, WPARAM},
         um::winuser::{
-            CallNextHookEx, GetKeyState, GetKeyboardState, KBDLLHOOKSTRUCT, ToUnicode, VK_CONTROL,
+            CallNextHookEx, GetKeyState, GetKeyboardState, ToUnicode, KBDLLHOOKSTRUCT, VK_CONTROL,
             VK_LWIN, VK_MENU, VK_RWIN, VK_SHIFT, WM_KEYDOWN,
         },
     },
@@ -59,8 +59,8 @@ fn translate_key(key_diff: LPARAM) -> Result<Option<KeyPress>, WindowsBackendErr
         )
     } {
         ..=0 => None,
-        1 => Some(NonZeroUsize::new(1).unwrap()),
-        2.. => Some(NonZeroUsize::new(2).unwrap()),
+        1 => Some(const { NonZeroUsize::new(1).unwrap() }),
+        2.. => Some(const { NonZeroUsize::new(2).unwrap() }),
     }) else {
         return Ok(None);
     };
@@ -88,8 +88,16 @@ pub unsafe extern "system" fn key_hook(
                 sender.send(event)
                     .expect(error::CLOSED_CHANNEL);
 
+            let (tx, rx) = oneshot::channel();
+
             match translate_key(key_diff) {
-                Ok(Some((modifiers, text))) => send(Ok(Event::Key(modifiers, text))),
+                Ok(Some((modifiers, text))) => {
+                    send(Ok(Event::Key(tx, modifiers, text)));
+
+                    if rx.recv().unwrap_or(false) {
+                        return 1;
+                    }
+                },
                 Ok(None) => {},
                 Err(err) => send(Err(err)),
             }

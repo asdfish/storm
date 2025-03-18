@@ -5,6 +5,7 @@ edition = "2024"
 
 [dependencies]
 enum-map = "2.7.3"
+oneshot = "0.1.11"
 opts = { path = "opts" }
 
 [target.'cfg(windows)'.dependencies]
