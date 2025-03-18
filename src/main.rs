@@ -1,4 +1,4 @@
-#![no_main]
+#![cfg_attr(not(test), no_main)]
 
 pub mod backend;
 pub mod config;
@@ -14,7 +14,7 @@ use {
 };
 
 // SAFETY: every c program has done this since the dawn of time
-#[unsafe(no_mangle)]
+#[cfg_attr(not(test), unsafe(no_mangle))]
 fn main(argc: c_int, argv: *const *const c_char) -> c_int {
     let mut config = Config::default();
     // SAFETY: argc and argv should not be unsafe to dereference
