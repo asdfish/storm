@@ -1,3 +1,5 @@
+mod opts;
+
 use {
     opts::{Flag, Parser},
     std::{

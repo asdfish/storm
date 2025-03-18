@@ -63,10 +63,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b4ce411919553d3f9fa53a0880544cda985a112117a0444d5ff1e870a893d6ea"
 
 [[package]]
-name = "opts"
-version = "0.1.0"
-
-[[package]]
 name = "parking_lot"
 version = "0.12.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -134,7 +130,6 @@ version = "0.1.0"
 dependencies = [
  "enum-map",
  "oneshot",
- "opts",
  "parking_lot",
  "widestring",
  "winapi",
