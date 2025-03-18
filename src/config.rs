@@ -1,20 +1,19 @@
 mod opts;
 
 use {
-    enum_map::Enum,
     opts::{Flag, Parser},
     std::{
         cell::{RefCell, RefMut},
         cmp::{Ordering, PartialOrd},
-        ffi::{CStr, c_char, c_int},
+        ffi::{c_char, c_int, CStr},
         fs::File,
-        io::{self, Write, stderr},
+        io::{self, stderr, Write},
         ops::DerefMut,
-        process::{Command, exit},
+        process::{exit, Command},
     },
 };
 
-#[cfg_attr(test, derive(Enum))]
+#[cfg_attr(test, derive(enum_map::Enum))]
 #[derive(Clone, Copy, Default, PartialEq)]
 #[repr(u8)]
 pub enum LogLevel {
@@ -26,9 +25,8 @@ pub enum LogLevel {
 impl PartialOrd for LogLevel {
     fn partial_cmp(&self, rhs: &Self) -> Option<Ordering> {
         match (self, rhs) {
-            (&Self::None, _) |
-            (_, &Self::None) => None,
-            _ =>  (*self as u8).partial_cmp(&(*rhs as u8)),
+            (&Self::None, _) | (_, &Self::None) => None,
+            _ => (*self as u8).partial_cmp(&(*rhs as u8)),
         }
     }
 }
@@ -170,33 +168,31 @@ Defaults to stderr if not set or printing fails."
 
 #[cfg(test)]
 mod tests {
-    use {
-        enum_map::EnumMap,
-        super::*,
-    };
-
-    fn log_map(log_level: LogLevel, map: EnumMap<LogLevel, bool>) {
-        let config = Config {
-            log_level,
-            ..Default::default()
-        };
-
-        map.into_iter()
-            .for_each(|(level, expected)| {
-                let mut logged = false;
-                config.log(level, |_| {
-                    logged = true;
-                    Ok(())
-                });
-
-                assert_eq!(logged, expected);
-            });
-    }
+    use {super::*, enum_map::EnumMap};
 
     #[test]
     fn logging() {
-        log_map(LogLevel::None, EnumMap::from_fn(|_| false));
-        log_map(LogLevel::Quiet, EnumMap::from_fn(|level| matches!(level, LogLevel::Quiet)));
-        log_map(LogLevel::Verbose, EnumMap::from_fn(|level| !matches!(level, LogLevel::None)));
+        fn log_map<F: FnMut(LogLevel) -> bool>(log_level: LogLevel, expected: F) {
+            let config = Config {
+                log_level,
+                ..Default::default()
+            };
+
+            EnumMap::from_fn(expected)
+                .into_iter()
+                .for_each(|(level, expected)| {
+                    let mut logged = false;
+                    config.log(level, |_| {
+                        logged = true;
+                        Ok(())
+                    });
+
+                    assert_eq!(logged, expected);
+                });
+        }
+
+        log_map(LogLevel::None, |_| false);
+        log_map(LogLevel::Quiet, |level| matches!(level, LogLevel::Quiet));
+        log_map(LogLevel::Verbose, |level| !matches!(level, LogLevel::None));
     }
 }
