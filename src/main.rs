@@ -6,7 +6,7 @@ pub mod error;
 pub mod state;
 
 use {
-    config::{Config, LogLevel},
+    config::Config,
     std::{
         env,
         ffi::{c_char, c_int},
@@ -21,7 +21,7 @@ fn main(argc: c_int, argv: *const *const c_char) -> c_int {
     unsafe { config.apply_argv(argc, argv) };
 
     if cfg!(not(windows)) {
-        config.log(LogLevel::Quiet, |f| writeln!(f, "operating system `{}` is not supported", env::consts::OS));
+        config.error(|f| writeln!(f, "operating system `{}` is not supported", env::consts::OS));
         return 1;
     }
 
@@ -31,10 +31,10 @@ fn main(argc: c_int, argv: *const *const c_char) -> c_int {
             backend::windows::WindowsBackendState,
             backend::windows::WindowsWindow,
             backend::windows::WindowsBackendError,
-            >::new(config)
-            .unwrap()
-            .run()
-            .unwrap();
+        >::new(config)
+        .unwrap()
+        .run()
+        .unwrap();
     }
 
     0

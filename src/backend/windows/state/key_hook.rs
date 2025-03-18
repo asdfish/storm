@@ -11,7 +11,7 @@ use {
         ctypes::c_int,
         shared::minwindef::{LPARAM, LRESULT, WPARAM},
         um::winuser::{
-            CallNextHookEx, GetKeyState, GetKeyboardState, ToUnicode, KBDLLHOOKSTRUCT, VK_CONTROL,
+            CallNextHookEx, GetKeyState, GetKeyboardState, KBDLLHOOKSTRUCT, ToUnicode, VK_CONTROL,
             VK_LWIN, VK_MENU, VK_RWIN, VK_SHIFT, WM_KEYDOWN,
         },
     },

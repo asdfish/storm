@@ -1,13 +1,13 @@
 use {
     crate::{
         backend::{self, Window},
-        config::{Config, LogLevel},
+        config::Config,
         error,
     },
     enum_map::{Enum, EnumMap},
     oneshot,
     std::{
-        collections::{hash_map, HashMap},
+        collections::{HashMap, hash_map},
         fmt::Display,
         marker::PhantomData,
         sync::mpsc,
@@ -60,7 +60,7 @@ where
         loop {
             match self.rx.recv() {
                 Ok(event) => match event {
-                    Ok(Event::AddWindow(workspace, window)) => {
+                    Ok(Event::AddWindow { workspace, window }) => {
                         match self.workspaces.entry(workspace) {
                             hash_map::Entry::Occupied(mut entry) => {
                                 entry.get_mut().push(window);
@@ -79,14 +79,13 @@ where
                         println!("modifiers, {:?}", modifiers);
                         consume.send(false).expect(error::CLOSED_CHANNEL);
                     }
-                    Err(e) => self.config.log(LogLevel::Quiet, |f| {
-                        writeln!(f, "failed to process event: {}", e)
-                    }),
+                    Err(e) => self
+                        .config
+                        .error(|f| writeln!(f, "failed to process event: {}", e)),
                 },
                 Err(error) => {
-                    self.config.log(LogLevel::Verbose, |f| {
-                        writeln!(f, "all senders have disconnected: {}", error)
-                    });
+                    self.config
+                        .error(|f| writeln!(f, "all senders have disconnected: {}", error));
                     break Ok(());
                 }
             }
@@ -95,15 +94,25 @@ where
     }
 }
 
+/// Events to be received in [Storm::run].
 pub enum Event<W: Window> {
-    AddWindow(u8, W),
+    /// Add a window.
+    AddWindow {
+        workspace: u8,
+        window: W,
+    },
     Key(oneshot::Sender<bool>, Modifiers, String),
 }
 
 #[derive(Clone, Copy, Debug, Enum)]
+/// The possible modifier keys from a key press.
+///
+/// Does not distinguish between left and right variants.
 pub enum Modifier {
+    /// AKA meta key.
     Alt,
     Control,
     Shift,
+    /// Logo/windows key.
     Super,
 }

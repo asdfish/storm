@@ -5,18 +5,19 @@ use {
     std::{
         cell::{RefCell, RefMut},
         cmp::{Ordering, PartialOrd},
-        ffi::{c_char, c_int, CStr},
+        ffi::{CStr, c_char, c_int},
         fs::File,
-        io::{self, stderr, Write},
+        io::{self, Write, stderr},
         ops::DerefMut,
-        process::{exit, Command},
+        process::{Command, exit},
     },
 };
 
 #[cfg_attr(test, derive(enum_map::Enum))]
 #[derive(Clone, Copy, Default, PartialEq)]
 #[repr(u8)]
-pub enum LogLevel {
+/// Determines how verbose log messages should be.
+enum LogLevel {
     None,
     #[default]
     Quiet,
@@ -148,13 +149,17 @@ Defaults to stderr if not set or printing fails."
             .iter()
             .for_each(|command| match Command::new(command).spawn() {
                 Ok(_) => {}
-                Err(err) => self.log(LogLevel::Quiet, |f| {
-                    writeln!(f, "error spawning command `{}`: {}", command, err)
-                }),
+                Err(err) => {
+                    self.error(|f| writeln!(f, "error spawning command `{}`: {}", command, err))
+                }
             })
     }
 
-    pub fn log<F: FnOnce(&mut dyn Write) -> io::Result<()>>(&self, level: LogLevel, print: F) {
+    fn log_with_level<F: FnOnce(&mut dyn Write) -> io::Result<()>>(
+        &self,
+        level: LogLevel,
+        print: F,
+    ) {
         match &self.file {
             Some(file) => self.log_level.log(
                 level,
@@ -163,6 +168,13 @@ Defaults to stderr if not set or printing fails."
             ),
             None => self.log_level.log(level, &mut stderr(), print),
         }
+    }
+
+    pub fn log<F: FnOnce(&mut dyn Write) -> io::Result<()>>(&self, print: F) {
+        self.log_with_level(LogLevel::Verbose, print)
+    }
+    pub fn error<F: FnOnce(&mut dyn Write) -> io::Result<()>>(&self, print: F) {
+        self.log_with_level(LogLevel::Quiet, print)
     }
 }
 

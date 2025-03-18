@@ -47,7 +47,10 @@ impl State<WindowsWindow, WindowsBackendError> for WindowsBackendState {
             state
                 .backend_state
                 .event_sender
-                .send(Ok(Event::AddWindow(state.workspace, foreground_window)))
+                .send(Ok(Event::AddWindow {
+                    workspace: state.workspace,
+                    window: foreground_window,
+                }))
                 .expect(error::CLOSED_CHANNEL);
         }
     }
