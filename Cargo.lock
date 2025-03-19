@@ -131,6 +131,7 @@ dependencies = [
  "enum-map",
  "oneshot",
  "parking_lot",
+ "smallvec",
  "unicode-ident",
  "widestring",
  "winapi",

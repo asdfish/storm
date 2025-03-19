@@ -81,11 +81,11 @@ impl<'src> Lexer<'src> {
                 )
                 .ok_or_else(overflow_error)
         }) {
-            Ok(int) => self.submit_token_with_str(Token::Int(if sign == Sign::Negative {
+            Ok(int) => self.submit_token_with_str(Token::Literal(Literal::Int(if sign == Sign::Negative {
                 -int
             } else {
                 int
-            }), next),
+            })), next),
             Err(err) => Some(Err(err)),
         }
     }
@@ -175,8 +175,8 @@ impl<'src> Iterator for Lexer<'src> {
 
                 self.submit_token_with_str(
                     match ident {
-                        "true" => Token::Bool(true),
-                        "false" => Token::Bool(false),
+                        "true" => Token::Literal(Literal::Bool(true)),
+                        "false" => Token::Literal(Literal::Bool(false)),
                         _ => Token::Ident(ident),
                     },
                     next,
@@ -244,7 +244,7 @@ impl<'src> Iterator for Lexer<'src> {
                     }
                 };
 
-                self.submit_token_with_str(Token::String(string), &self.next[end..])
+                self.submit_token_with_str(Token::Literal(Literal::String(string)), &self.next[end..])
             }
             ch => Some(Err(LexerError::new(
                 *self,
@@ -263,9 +263,13 @@ pub enum Token<'src> {
     RBrace,
     Assign,
     Comma,
+    Ident(&'src str),
+    Literal(Literal<'src>),
+}
+#[derive(Clone, Debug, PartialEq)]
+pub enum Literal<'src> {
     Bool(bool),
     Int(i64),
-    Ident(&'src str),
     String(Cow<'src, str>),
 }
 
@@ -405,28 +409,28 @@ mod tests {
     #[test]
     fn varadic_inputs() {
         token_list([
-            ("true", Token::Bool(true)),
-            ("false", Token::Bool(false)),
+            ("true", Token::Literal(Literal::Bool(true))),
+            ("false", Token::Literal(Literal::Bool(false))),
             ("foo", Token::Ident("foo")),
             ("bar", Token::Ident("bar")),
-            ("0", Token::Int(0)),
-            ("0b10", Token::Int(0b10)),
-            ("0o12345670", Token::Int(0o12345670)),
-            ("0d1234567890", Token::Int(1234567890)),
-            ("0x123456789abcdef0", Token::Int(0x123456789abcdef0)),
-            ("+0", Token::Int(0)),
-            ("+0b10", Token::Int(0b10)),
-            ("+0o12345670", Token::Int(0o12345670)),
-            ("+0d1234567890", Token::Int(1234567890)),
-            ("+0x123456789abcdef0", Token::Int(0x123456789abcdef0)),
-            ("-0", Token::Int(-0)),
-            ("-0b10", Token::Int(-0b10)),
-            ("-0o12345670", Token::Int(-0o12345670)),
-            ("-0d1234567890", Token::Int(-1234567890)),
-            ("-0x123456789abcdef0", Token::Int(-0x123456789abcdef0)),
+            ("0", Token::Literal(Literal::Int(0))),
+            ("0b10", Token::Literal(Literal::Int(0b10))),
+            ("0o12345670", Token::Literal(Literal::Int(0o12345670))),
+            ("0d1234567890", Token::Literal(Literal::Int(1234567890))),
+            ("0x123456789abcdef0", Token::Literal(Literal::Int(0x123456789abcdef0))),
+            ("+0", Token::Literal(Literal::Int(0))),
+            ("+0b10", Token::Literal(Literal::Int(0b10))),
+            ("+0o12345670", Token::Literal(Literal::Int(0o12345670))),
+            ("+0d1234567890", Token::Literal(Literal::Int(1234567890))),
+            ("+0x123456789abcdef0", Token::Literal(Literal::Int(0x123456789abcdef0))),
+            ("-0", Token::Literal(Literal::Int(-0))),
+            ("-0b10", Token::Literal(Literal::Int(-0b10))),
+            ("-0o12345670", Token::Literal(Literal::Int(-0o12345670))),
+            ("-0d1234567890", Token::Literal(Literal::Int(-1234567890))),
+            ("-0x123456789abcdef0", Token::Literal(Literal::Int(-0x123456789abcdef0))),
             (
                 r#""hello world\n\r\t\"\'""#,
-                Token::String("hello world\n\r\t\"\'".into()),
+                Token::Literal(Literal::String("hello world\n\r\t\"\'".into())),
             ),
         ]);
     }
