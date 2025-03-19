@@ -223,17 +223,15 @@ impl<'src> Iterator for Lexer<'src> {
                         }),
                         Some((index, ch @ '"')) => {
                             break index + ch.len_utf8();
-                        },
-                        Some((end, ch)) => {
-                            match &mut string {
-                                Cow::Owned(string) => {
-                                    string.push(ch);
-                                }
-                                Cow::Borrowed(_) => {
-                                    string = Cow::Borrowed(&self.next[..end + ch.len_utf8()]);
-                                }
-                            }
                         }
+                        Some((end, ch)) => match &mut string {
+                            Cow::Owned(string) => {
+                                string.push(ch);
+                            }
+                            Cow::Borrowed(_) => {
+                                string = Cow::Borrowed(&self.next[..end + ch.len_utf8()]);
+                            }
+                        },
                         None => {
                             return Some(Err(LexerError::new(
                                 *self,
@@ -247,7 +245,7 @@ impl<'src> Iterator for Lexer<'src> {
                 };
 
                 self.submit_token_with_str(Token::String(string), &self.next[end..])
-            },
+            }
             ch => Some(Err(LexerError::new(
                 *self,
                 LexerErrorKind::Unexpected {
@@ -368,9 +366,7 @@ mod tests {
             let mut lexer = Lexer::new(&src);
             tokens
                 .iter()
-                .map(|(_, expectation)| {
-                    (lexer.next().unwrap(), expectation)
-                })
+                .map(|(_, expectation)| (lexer.next().unwrap(), expectation))
                 .for_each(|(token, expectation)| assert_eq!(token.as_ref(), Ok(expectation)));
             assert_eq!(lexer.next(), None);
         }
@@ -428,7 +424,10 @@ mod tests {
             ("-0o12345670", Token::Int(-0o12345670)),
             ("-0d1234567890", Token::Int(-1234567890)),
             ("-0x123456789abcdef0", Token::Int(-0x123456789abcdef0)),
-            (r#""hello world\n\r\t\"\'""#, Token::String("hello world\n\r\t\"\'".into()))
+            (
+                r#""hello world\n\r\t\"\'""#,
+                Token::String("hello world\n\r\t\"\'".into()),
+            ),
         ]);
     }
 }
