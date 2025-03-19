@@ -1,3 +1,4 @@
+mod lexer;
 mod opts;
 
 use {
@@ -194,7 +195,7 @@ mod tests {
                 .into_iter()
                 .for_each(|(level, expected)| {
                     let mut logged = false;
-                    config.log(level, |_| {
+                    config.log_with_level(level, |_| {
                         logged = true;
                         Ok(())
                     });

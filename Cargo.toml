@@ -6,6 +6,7 @@ edition = "2024"
 [dependencies]
 enum-map = "2.7.3"
 oneshot = "0.1.11"
+unicode-ident = "1.0.18"
 
 [target.'cfg(windows)'.dependencies]
 parking_lot = "0.12.3"
