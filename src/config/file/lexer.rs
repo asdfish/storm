@@ -1,6 +1,9 @@
 //! Conf file lexer
 
-use unicode_ident::{is_xid_continue, is_xid_start};
+use {
+    std::borrow::Cow,
+    unicode_ident::{is_xid_continue, is_xid_start},
+};
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Lexer<'src> {
@@ -179,17 +182,83 @@ impl<'src> Iterator for Lexer<'src> {
                     next,
                 )
             }
+            '"' => {
+                self.next = chars
+                    .next()
+                    .and_then(|(index, _)| self.next.get(index..))
+                    .unwrap_or_default();
+                let mut chars = self.next.char_indices();
+
+                let mut string = Cow::Borrowed("");
+
+                let end = loop {
+                    // println!("{}", chars.as_str());
+
+                    match chars.next() {
+                        Some((_, '\\')) => string.to_mut().push(match chars.next() {
+                            Some((_, 'n')) => '\n',
+                            Some((_, 'r')) => '\r',
+                            Some((_, 't')) => '\t',
+                            Some((_, '"')) => '"',
+                            Some((_, '\'')) => '\'',
+                            Some((_, '\\')) => '\\',
+                            Some((_, ch)) => {
+                                return Some(Err(LexerError::new(
+                                    *self,
+                                    LexerErrorKind::Unexpected {
+                                        expected: Expectation::Regex(r#"[nrt"\\]"#),
+                                        got: Expectation::Char(ch),
+                                    },
+                                )))
+                            }
+                            None => {
+                                return Some(Err(LexerError::new(
+                                    *self,
+                                    LexerErrorKind::Unexpected {
+                                        expected: Expectation::Regex(r#"[nrt"\\]"#),
+                                        got: Expectation::Eof,
+                                    },
+                                )))
+                            }
+                        }),
+                        Some((index, ch @ '"')) => {
+                            break index + ch.len_utf8();
+                        },
+                        Some((end, ch)) => {
+                            match &mut string {
+                                Cow::Owned(string) => {
+                                    string.push(ch);
+                                }
+                                Cow::Borrowed(_) => {
+                                    string = Cow::Borrowed(&self.next[..end + ch.len_utf8()]);
+                                }
+                            }
+                        }
+                        None => {
+                            return Some(Err(LexerError::new(
+                                *self,
+                                LexerErrorKind::Unexpected {
+                                    expected: Expectation::Regex(r#"[^\\"]|(\\[nrt"\\])"#),
+                                    got: Expectation::Eof,
+                                },
+                            )))
+                        }
+                    }
+                };
+
+                self.submit_token_with_str(Token::String(string), &self.next[end..])
+            },
             ch => Some(Err(LexerError::new(
                 *self,
                 LexerErrorKind::Unexpected {
-                    expected: Expectation::Regex(r#"[\[\]=,\n\r-+0-9\p{XID_Start}]"#),
+                    expected: Expectation::Regex(r#"[\[\]=,\n\r-+0-9\p{XID_Start}"]"#),
                     got: Expectation::Char(ch),
                 },
             ))),
         }
     }
 }
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum Token<'src> {
     NewLine,
     LBrace,
@@ -199,6 +268,7 @@ pub enum Token<'src> {
     Bool(bool),
     Int(i64),
     Ident(&'src str),
+    String(Cow<'src, str>),
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -299,7 +369,6 @@ mod tests {
             tokens
                 .iter()
                 .map(|(_, expectation)| {
-                    println!("{lexer:?}");
                     (lexer.next().unwrap(), expectation)
                 })
                 .for_each(|(token, expectation)| assert_eq!(token.as_ref(), Ok(expectation)));
@@ -328,7 +397,7 @@ mod tests {
 
     #[test]
     fn fauly_inputs() {
-        ["0b", "0o", "0d", "0x", "\r"]
+        ["0b", "0o", "0d", "0x", "\r", r#""\a""#, r#"""#, r#""\""#]
             .into_iter()
             .map(Lexer::new)
             .map(|mut lexer| lexer.next())
@@ -359,6 +428,7 @@ mod tests {
             ("-0o12345670", Token::Int(-0o12345670)),
             ("-0d1234567890", Token::Int(-1234567890)),
             ("-0x123456789abcdef0", Token::Int(-0x123456789abcdef0)),
+            (r#""hello world\n\r\t\"\'""#, Token::String("hello world\n\r\t\"\'".into()))
         ]);
     }
 }

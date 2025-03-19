@@ -1,4 +1,4 @@
-mod lexer;
+mod file;
 mod opts;
 
 use {
