@@ -1,6 +1,7 @@
 #![cfg_attr(not(test), no_main)]
 
 pub mod backend;
+pub mod bomb;
 pub mod config;
 pub mod error;
 pub mod state;

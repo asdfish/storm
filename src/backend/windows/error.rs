@@ -1,5 +1,5 @@
 use {
-    crate::backend::windows::LocalPtr,
+    crate::bomb::Bomb,
     std::{
         error::Error as StdError,
         fmt::{self, Display, Formatter},
@@ -11,12 +11,14 @@ use {
     },
     widestring::ucstr::U16CStr,
     winapi::{
+        ctypes::c_void,
         shared::minwindef::DWORD,
         um::{
             errhandlingapi::GetLastError,
             winbase::{
                 FORMAT_MESSAGE_ALLOCATE_BUFFER, FORMAT_MESSAGE_FROM_SYSTEM,
                 FORMAT_MESSAGE_IGNORE_INSERTS, FormatMessageW,
+                LocalFree,
             },
             winnt::{LANG_NEUTRAL, LPWSTR, MAKELANGID, SUBLANG_DEFAULT, WCHAR},
         },
@@ -94,7 +96,11 @@ impl WinapiError {
 
 impl Display for WinapiError {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        let mut str = LocalPtr::<WCHAR>(null_mut());
+        let mut str = Bomb::new(null_mut(), |ptr: &mut *mut WCHAR| if !ptr.is_null() {
+            unsafe {
+                LocalFree(*ptr as *mut c_void);
+            }
+        });
 
         let Some(len) = unsafe {
             FormatMessageW(
@@ -104,7 +110,7 @@ impl Display for WinapiError {
                 null_mut(),
                 self.0,
                 MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT).into(),
-                &mut str.0 as *mut *mut WCHAR as LPWSTR,
+                str.as_mut() as *mut *mut WCHAR as LPWSTR,
                 0,
                 null_mut(),
             )
@@ -118,11 +124,11 @@ impl Display for WinapiError {
             );
         };
 
-        if str.0.is_null() {
+        if str.is_null() {
             write!(f, "failed to get error message: allocation failed")
         } else {
             // SAFETY: `str.0` is not null
-            match unsafe { U16CStr::from_ptr(str.0, len.get()) } {
+            match unsafe { U16CStr::from_ptr(*str.as_ref(), len.get()) } {
                 Ok(msg) => write!(f, "{}", msg.display()),
                 Err(err) => write!(f, "failed to get error message: {}", err),
             }

@@ -1,11 +1,15 @@
+pub mod key;
 mod opts;
 
 use {
+    enum_map::EnumMap,
+    key::{Key, KeyAction, KeyModifier},
     opts::Flag,
     smallvec::SmallVec,
     std::{
         cell::{RefCell, RefMut},
         cmp::{Ordering, PartialOrd},
+        collections::VecDeque,
         ffi::{CStr, c_char, c_int},
         fs::File,
         io::{self, Write, stderr},
@@ -55,6 +59,7 @@ pub struct Config<'a> {
     commands: SmallVec<[&'a str; 8]>,
     log_level: LogLevel,
     log_file: Option<RefCell<File>>,
+    key_bindings: EnumMap<KeyAction, SmallVec<[Key<'a>; 4]>>,
 }
 impl<'a> Config<'a> {
     pub fn apply_args<I: Iterator<Item = &'a S>, S: AsRef<str> + ?Sized + 'a>(&mut self, args: I) {

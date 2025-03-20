@@ -2,8 +2,9 @@ use {
     super::EVENT_SENDER,
     crate::{
         backend::windows::{WinapiError, WindowsBackendError},
+        config::key::{KeyModifier, KeyModifiers},
         error,
-        state::{Event, Modifier, Modifiers},
+        state::Event,
     },
     std::{num::NonZeroUsize, ptr::null_mut},
     widestring::ustr::U16Str,
@@ -17,7 +18,7 @@ use {
     },
 };
 
-type KeyPress = (Modifiers, String);
+type KeyPress = (KeyModifiers, String);
 
 /// Returns Ok(None) for dead keys.
 fn translate_key(key_diff: LPARAM) -> Result<Option<KeyPress>, WindowsBackendError> {
@@ -25,10 +26,10 @@ fn translate_key(key_diff: LPARAM) -> Result<Option<KeyPress>, WindowsBackendErr
         .ok_or(WindowsBackendError::NullKbdllhookstruct)?;
 
     let modifiers = [
-        (Modifier::Alt, &[VK_MENU] as &[_]),
-        (Modifier::Control, &[VK_CONTROL]),
-        (Modifier::Shift, &[VK_SHIFT]),
-        (Modifier::Super, &[VK_LWIN, VK_RWIN]),
+        (KeyModifier::Alt, &[VK_MENU] as &[_]),
+        (KeyModifier::Control, &[VK_CONTROL]),
+        (KeyModifier::Shift, &[VK_SHIFT]),
+        (KeyModifier::Super, &[VK_LWIN, VK_RWIN]),
     ]
     .into_iter()
     .map(|(modifier, virt_keys)| {
@@ -41,7 +42,7 @@ fn translate_key(key_diff: LPARAM) -> Result<Option<KeyPress>, WindowsBackendErr
                 .any(|virt_key| virt_key & (1 << 15) != 0),
         )
     })
-    .collect::<Modifiers>();
+    .collect::<KeyModifiers>();
 
     let mut keyboard_state = [0; 256];
     WinapiError::from_return(unsafe { GetKeyboardState(keyboard_state.as_mut_ptr()) })?;

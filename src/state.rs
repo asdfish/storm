@@ -1,7 +1,7 @@
 use {
     crate::{
         backend::{self, Window},
-        config::Config,
+        config::{Config, key::KeyModifiers},
         error,
     },
     enum_map::{Enum, EnumMap},
@@ -16,7 +16,6 @@ use {
 
 pub type EventSender<W, E> = mpsc::Sender<Result<Event<W>, E>>;
 pub type EventReceiver<W, E> = mpsc::Receiver<Result<Event<W>, E>>;
-pub type Modifiers = EnumMap<Modifier, bool>;
 
 pub struct Storm<'a, S, W, E>
 where
@@ -101,18 +100,5 @@ pub enum Event<W: Window> {
         workspace: u8,
         window: W,
     },
-    Key(oneshot::Sender<bool>, Modifiers, String),
-}
-
-#[derive(Clone, Copy, Debug, Enum)]
-/// The possible modifier keys from a key press.
-///
-/// Does not distinguish between left and right variants.
-pub enum Modifier {
-    /// AKA meta key.
-    Alt,
-    Control,
-    Shift,
-    /// Logo/windows key.
-    Super,
+    Key(oneshot::Sender<bool>, KeyModifiers, String),
 }
