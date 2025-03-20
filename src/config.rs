@@ -4,7 +4,6 @@ use {
     opts::Flag,
     smallvec::SmallVec,
     std::{
-        borrow::Cow,
         cell::{RefCell, RefMut},
         cmp::{Ordering, PartialOrd},
         ffi::{CStr, c_char, c_int},
@@ -53,7 +52,7 @@ impl LogLevel {
 /// Errors that occur during configuration parsing are reported to stderr, as they could be
 /// important and [Self::log_file] may be incomplete.
 pub struct Config<'a> {
-    commands: SmallVec<[Cow<'a, str>; 8]>,
+    commands: SmallVec<[&'a str; 8]>,
     log_level: LogLevel,
     log_file: Option<RefCell<File>>,
 }
@@ -103,7 +102,7 @@ Options:
                     level => eprintln!("unknown verbosity level: `{}`", level),
                 },
                 Flag::Short('c') | Flag::Long("command") => {
-                    self.commands.push(value_or_continue!().into());
+                    self.commands.push(value_or_continue!());
                 }
                 Flag::Short('l') | Flag::Long("log") => {
                     self.log_file = File::create(value_or_continue!()).map(RefCell::new).ok();
@@ -149,7 +148,7 @@ Options:
     pub fn execute_commands(&self) {
         self.commands
             .iter()
-            .for_each(|command| match Command::new(command.as_ref()).spawn() {
+            .for_each(|command| match Command::new(command).spawn() {
                 Ok(_) => {}
                 Err(err) => {
                     self.error(|f| writeln!(f, "error spawning command `{}`: {}", command, err))
