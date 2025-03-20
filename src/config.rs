@@ -82,12 +82,12 @@ Options:
 -h --help    Display this message and exit.
 -V --version Show version information and exit.
 -v --verbose Set how verbose logging should be:
-none    - disable logging
-quiet   - only log errors
-verbose - log progress
+             none    - disable logging
+             quiet   - only log errors
+             verbose - log progress
 -c --command Command to execute after initialization.
 -l --log     File to print logs in.
-Defaults to stderr if not set or printing fails."
+             Defaults to stderr if not set."
                     );
 
                     exit(0);
