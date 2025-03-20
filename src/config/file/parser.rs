@@ -8,7 +8,6 @@ use {
 pub enum Instruction<'src> {
     Array(&'src str, SmallVec<[Literal<'src>; 8]>),
     Literal(&'src str, Literal<'src>),
-    ChangeSection(&'src str),
 }
 
 pub struct Parser<'src>(Peekable<Lexer<'src>>);
@@ -110,22 +109,6 @@ impl<'src> Iterator for Parser<'src> {
 
                 Some(Ok(instruction))
             }
-            Token::LBrace => {
-                let ident = match next!() {
-                    Token::Ident(ident) => ident,
-                    token => {
-                        return Some(Err(ParserError::Unexpected {
-                            expected: TokenTy::Ident,
-                            got: token.into(),
-                        }))
-                    }
-                };
-
-                assert_next_token!(Token::RBrace, TokenTy::RBrace);
-                newline_or_eof!();
-
-                Some(Ok(Instruction::ChangeSection(ident)))
-            }
             token => Some(Err(ParserError::Unexpected {
                 expected: TokenTy::Choice(&[TokenTy::LBrace]),
                 got: token.into(),
@@ -184,16 +167,6 @@ impl<'src> From<Token<'src>> for TokenTy {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn change_section() {
-        let mut parser = Parser::new("[foo]\r\n[bar]\n[baz]");
-
-        assert_eq!(parser.next().unwrap().unwrap(), Instruction::ChangeSection("foo"));
-        assert_eq!(parser.next().unwrap().unwrap(), Instruction::ChangeSection("bar"));
-        assert_eq!(parser.next().unwrap().unwrap(), Instruction::ChangeSection("baz"));
-        assert_eq!(parser.next(), None);
-    }
 
     #[test]
     fn literal() {
