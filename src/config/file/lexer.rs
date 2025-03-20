@@ -1,7 +1,10 @@
 //! Conf file lexer
 
 use {
-    std::borrow::Cow,
+    std::{
+        borrow::Cow,
+        fmt::{self, Display, Formatter},
+    },
     unicode_ident::{is_xid_continue, is_xid_start},
 };
 
@@ -271,6 +274,16 @@ pub enum Literal<'src> {
     Bool(bool),
     Int(i64),
     String(Cow<'src, str>),
+}
+impl Display for Literal<'_> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Bool(true) => write!(f, "true"),
+            Self::Bool(false) => write!(f, "false"),
+            Self::Int(i) => write!(f, "{}", i),
+            Self::String(s) => write!(f, "{}", s),
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]

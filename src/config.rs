@@ -2,8 +2,10 @@ mod file;
 mod opts;
 
 use {
-    opts::{Flag, Parser},
+    opts::Flag,
+    smallvec::SmallVec,
     std::{
+        borrow::Cow,
         cell::{RefCell, RefMut},
         cmp::{Ordering, PartialOrd},
         ffi::{CStr, c_char, c_int},
@@ -14,7 +16,6 @@ use {
     },
 };
 
-#[cfg_attr(test, derive(enum_map::Enum))]
 #[derive(Clone, Copy, Default, PartialEq)]
 #[repr(u8)]
 /// Determines how verbose log messages should be.
@@ -50,15 +51,16 @@ impl LogLevel {
 }
 
 #[derive(Default)]
+/// Errors that occur during configuration parsing are reported to stderr, as they could be
+/// important and [Self::log_file] may be incomplete.
 pub struct Config<'a> {
-    commands: Vec<&'a str>,
+    commands: SmallVec<[Cow<'a, str>; 8]>,
     log_level: LogLevel,
-    file: Option<RefCell<File>>,
+    log_file: Option<RefCell<File>>,
 }
 impl<'a> Config<'a> {
-    /// Errors in argument parsing are always printed to stderr.
-    pub fn apply<I: Iterator<Item = &'a S>, S: AsRef<str> + ?Sized + 'a>(&mut self, args: I) {
-        let mut parser = Parser::new(args);
+    pub fn apply_args<I: Iterator<Item = &'a S>, S: AsRef<str> + ?Sized + 'a>(&mut self, args: I) {
+        let mut parser = opts::Parser::new(args);
         while let Some(flag) = parser.next() {
             macro_rules! value_or_continue {
                 () => {
@@ -102,10 +104,10 @@ Defaults to stderr if not set or printing fails."
                     level => eprintln!("unknown verbosity level: `{}`", level),
                 },
                 Flag::Short('c') | Flag::Long("command") => {
-                    self.commands.push(value_or_continue!());
+                    self.commands.push(value_or_continue!().into());
                 }
                 Flag::Short('l') | Flag::Long("log") => {
-                    self.file = File::create(value_or_continue!()).map(RefCell::new).ok();
+                    self.log_file = File::create(value_or_continue!()).map(RefCell::new).ok();
                 }
                 flag @ Flag::Short(_) | flag @ Flag::Long(_) => {
                     eprintln!("unknown flag `{}`", flag);
@@ -141,14 +143,14 @@ Defaults to stderr if not set or printing fails."
                         None
                     }
                 });
-            self.apply(argv);
+            self.apply_args(argv);
         }
     }
 
     pub fn execute_commands(&self) {
         self.commands
             .iter()
-            .for_each(|command| match Command::new(command).spawn() {
+            .for_each(|command| match Command::new(command.as_ref()).spawn() {
                 Ok(_) => {}
                 Err(err) => {
                     self.error(|f| writeln!(f, "error spawning command `{}`: {}", command, err))
@@ -161,7 +163,7 @@ Defaults to stderr if not set or printing fails."
         level: LogLevel,
         print: F,
     ) {
-        match &self.file {
+        match &self.log_file {
             Some(file) => self.log_level.log(
                 level,
                 <RefMut<'_, File> as DerefMut>::deref_mut(&mut file.borrow_mut()),
@@ -181,18 +183,23 @@ Defaults to stderr if not set or printing fails."
 
 #[cfg(test)]
 mod tests {
-    use {super::*, enum_map::EnumMap};
+    use super::*;
 
     #[test]
     fn logging() {
-        fn log_map<F: FnMut(LogLevel) -> bool>(log_level: LogLevel, expected: F) {
+        fn log_map<F: FnMut(LogLevel) -> bool>(log_level: LogLevel, mut expected: F) {
             let config = Config {
                 log_level,
                 ..Default::default()
             };
 
-            EnumMap::from_fn(expected)
+            [
+                LogLevel::None,
+                LogLevel::Quiet,
+                LogLevel::Verbose,
+            ]
                 .into_iter()
+                .map(|level| (level, expected(level)))
                 .for_each(|(level, expected)| {
                     let mut logged = false;
                     config.log_with_level(level, |_| {
