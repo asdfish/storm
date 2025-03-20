@@ -1,4 +1,3 @@
-mod file;
 mod opts;
 
 use {
