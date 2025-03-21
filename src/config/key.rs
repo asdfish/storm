@@ -1,7 +1,7 @@
 use {
-    crate::cut_str::CutStr,
     enum_map::{Enum, EnumMap},
-    std::{borrow::Cow, collections::VecDeque},
+    smallvec::SmallVec,
+    std::{borrow::Cow, ops::Not},
 };
 
 #[derive(Enum)]
@@ -10,28 +10,63 @@ pub enum KeyAction {
 }
 
 #[derive(Debug, PartialEq)]
-pub struct Key<'a>(CutStr<'a>, KeyModifiers);
+pub struct Key<'a>(Cow<'a, str>, KeyModifiers);
+
 #[derive(Debug, PartialEq)]
-pub struct KeySequence<'a>(VecDeque<Key<'a>>);
-impl<'a> FromIterator<(Cow<'a, str>, KeyModifiers)> for KeySequence<'a> {
-    fn from_iter<I>(iter: I) -> Self
-    where
-        I: IntoIterator<Item = (Cow<'a, str>, KeyModifiers)>,
-    {
-        let mut iter = iter.into_iter().peekable();
-        let mut deque = VecDeque::with_capacity(iter.size_hint().0);
-
-        while let Some((mut next_str, next_mods)) = iter.next() {
-            while let Some((peeked_str, _)) =
-                iter.next_if(|(_, peeked_mods)| next_mods == *peeked_mods)
-            {
-                next_str.to_mut().push_str(&peeked_str);
+/// The keys *never* contain the same modifiers while being chained.
+pub struct KeySequence<'a>(SmallVec<[Key<'a>; 4]>);
+impl KeySequence<'_> {
+    pub fn new() -> Self {
+        Self(SmallVec::new())
+    }
+    /// Allocate `n` elements in advance
+    pub fn reserve(&mut self, n: usize) {
+        self.0.reserve(n);
+    }
+    /// Shed excess capacity
+    pub fn shrink_to_fit(&mut self) {
+        self.0.shrink_to_fit();
+    }
+    /// Create `self` with `n` elements in advance
+    pub fn with_capacity(cap: usize) -> Self {
+        Self(SmallVec::with_capacity(cap))
+    }
+}
+impl<'a> KeySequence<'a> {
+    /// Add a new key or append to the current tail if they share modifiers
+    pub fn push(&mut self, key: Key<'a>) {
+        match self.0.last_mut() {
+            Some(Key(text, mods)) if key.1.eq(mods) => {
+                text.to_mut().push_str(&key.0);
             }
-
-            deque.push_back(Key(CutStr::Cow(next_str), next_mods));
+            _ => self.0.push(key),
         }
+    }
 
-        Self(deque)
+    /// Whether or not `self` contains the key sequence described in other
+    pub fn contains<'b>(&self, other: &KeySequence<'b>) -> bool {
+        self.0.iter().zip(other.0.iter()).any(|(l, r)| l != r).not()
+    }
+}
+impl<'a> Extend<Key<'a>> for KeySequence<'a> {
+    fn extend<T>(&mut self, iter: T)
+    where
+        T: IntoIterator<Item = Key<'a>>,
+    {
+        let iter = iter.into_iter();
+        self.0.reserve(iter.size_hint().0);
+        iter.for_each(|key| self.push(key));
+    }
+}
+impl<'a> FromIterator<Key<'a>> for KeySequence<'a> {
+    fn from_iter<T>(iter: T) -> Self
+    where
+        T: IntoIterator<Item = Key<'a>>,
+    {
+        let mut output = Self::new();
+        output.extend(iter);
+
+        output
     }
 }
 
@@ -55,17 +90,31 @@ mod tests {
     use super::*;
 
     #[test]
+    fn key_sequence_contains() {
+        assert!(
+            KeySequence::from_iter([
+                Key("foo".into(), KeyModifiers::from_fn(|_| false)),
+                Key("bar".into(), KeyModifiers::from_fn(|_| true)),
+            ])
+            .contains(&KeySequence::from_iter([Key(
+                "foo".into(),
+                KeyModifiers::from_fn(|_| false)
+            )]))
+        );
+    }
+
+    #[test]
     fn key_sequence_flatten() {
         assert_eq!(
             KeySequence::from_iter([
-                ("foo".into(), KeyModifiers::from_fn(|_| false)),
-                ("bar".into(), KeyModifiers::from_fn(|_| false)),
-                ("foo".into(), KeyModifiers::from_fn(|_| true)),
-                ("bar".into(), KeyModifiers::from_fn(|_| true)),
+                Key("foo".into(), KeyModifiers::from_fn(|_| false)),
+                Key("bar".into(), KeyModifiers::from_fn(|_| false)),
+                Key("foo".into(), KeyModifiers::from_fn(|_| true)),
+                Key("bar".into(), KeyModifiers::from_fn(|_| true)),
             ]),
             KeySequence::from_iter([
-                ("foobar".into(), KeyModifiers::from_fn(|_| false)),
-                ("foobar".into(), KeyModifiers::from_fn(|_| true)),
+                Key("foobar".into(), KeyModifiers::from_fn(|_| false)),
+                Key("foobar".into(), KeyModifiers::from_fn(|_| true)),
             ])
         );
     }
