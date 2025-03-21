@@ -1,7 +1,11 @@
 use {
     enum_map::{Enum, EnumMap},
     smallvec::SmallVec,
-    std::{borrow::Cow, ops::Not},
+    std::{
+        borrow::Cow,
+        fmt::{self, Display, Formatter},
+        ops::Not,
+    },
 };
 
 #[derive(Enum)]
@@ -10,7 +14,80 @@ pub enum KeyAction {
 }
 
 #[derive(Debug, PartialEq)]
-pub struct Key<'a>(Cow<'a, str>, KeyModifiers);
+/// Represent a key press
+pub struct Key<'a> {
+    /// The modifiers that are active during
+    mods: KeyModifiers,
+    kind: KeyKind<'a>,
+}
+impl Display for Key<'_> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match &self.kind {
+            KeyKind::Invisible(key) => write!(f, "{}{}", self.mods, key),
+            KeyKind::Visible(keys) => keys.chars()
+                .try_for_each(|key| write!(f, "{}{}", self.mods, key))
+        }
+    }
+}
+
+#[derive(Debug, PartialEq)]
+pub enum KeyKind<'a> {
+    /// Keys that cannot be represented using text (such as `F1`, `PageUp`, ..)
+    Invisible(InvisibleKey),
+    /// Keys that can be represented using text (such as 'a', 'A', 'b', ..)
+    Visible(Cow<'a, str>),
+}
+impl Display for KeyKind<'_> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Invisible(key) => write!(f, "{}", key),
+            Self::Visible(key) => {
+                key.chars()
+                    .try_for_each(|ch| {
+                        match ch {
+                            'M' |
+                            'C' |
+                            'S' |
+                            'L' |
+                            '<' |
+                            '>' => write!(f, "\\{}", ch),
+                            ch => write!(f, "{}", ch),
+                        }
+                    })
+            }
+        }
+    }
+}
+impl<'a> From<Cow<'a, str>> for KeyKind<'a> {
+    fn from(key: Cow<'a, str>) -> Self {
+        Self::Visible(key)
+    }
+}
+impl<'a> From<&'a str> for KeyKind<'a> {
+    fn from(key: &'a str) -> Self {
+        Self::Visible(key.into())
+    }
+}
+#[derive(Debug, PartialEq)]
+pub enum InvisibleKey {
+    /// Function keys
+    F(u8),
+    PageUp,
+    PageDown,
+}
+impl Display for InvisibleKey {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(f, "<")?;
+
+        match self {
+            Self::F(n) => write!(f, "F{n}"),
+            Self::PageUp => write!(f, "PG-UP"),
+            Self::PageDown => write!(f, "PG-DN"),
+        }?;
+
+        write!(f, ">")
+    }
+}
 
 #[derive(Debug, PartialEq)]
 /// The keys *never* contain the same modifiers while being chained.
@@ -33,13 +110,20 @@ impl KeySequence<'_> {
     }
 }
 impl<'a> KeySequence<'a> {
-    /// Add a new key or append to the current tail if they share modifiers
+    /// Add a new key or append to the current tail if they share modifiers and are both textual
     pub fn push(&mut self, key: Key<'a>) {
-        match self.0.last_mut() {
-            Some(Key(text, mods)) if key.1.eq(mods) => {
-                text.to_mut().push_str(&key.0);
-            }
-            _ => self.0.push(key),
+        match (self.0.last_mut(), key) {
+            (
+                Some(Key {
+                    kind: KeyKind::Visible(last_text),
+                    mods: last_mods,
+                }),
+                Key {
+                    kind: KeyKind::Visible(next_text),
+                    mods: next_mods,
+                },
+            ) if next_mods.eq(last_mods) => last_text.to_mut().push_str(&next_text),
+            (_, key) => self.0.push(key),
         }
     }
 
@@ -82,8 +166,42 @@ pub enum KeyModifier {
     /// Logo/windows key.
     Super,
 }
+impl Display for KeyModifier {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Alt => write!(f, "M-"),
+            Self::Control => write!(f, "C-"),
+            Self::Shift => write!(f, "S-"),
+            Self::Super => write!(f, "L-"),
+        }
+    }
+}
 
-pub type KeyModifiers = EnumMap<KeyModifier, bool>;
+#[derive(Debug, PartialEq)]
+pub struct KeyModifiers(EnumMap<KeyModifier, bool>);
+impl KeyModifiers {
+    pub fn from_fn<F>(f: F) -> Self
+    where
+        F: FnMut(KeyModifier) -> bool {
+        Self(EnumMap::from_fn(f))
+    }
+
+    /// Returns whether there are any active key modifiers
+    pub fn is_active(&self) -> bool {
+        self.0.values()
+            .copied()
+            .any(|active| active)
+    }
+}
+impl Display for KeyModifiers {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        self
+            .0
+            .iter()
+            .filter_map(|(modifier, active)| active.then_some(modifier))
+            .try_for_each(|modifier| write!(f, "{}", modifier))
+    }
+}
 
 #[cfg(test)]
 mod tests {
@@ -93,13 +211,13 @@ mod tests {
     fn key_sequence_contains() {
         assert!(
             KeySequence::from_iter([
-                Key("foo".into(), KeyModifiers::from_fn(|_| false)),
-                Key("bar".into(), KeyModifiers::from_fn(|_| true)),
+                Key { kind: "foo".into(), mods: KeyModifiers::from_fn(|_| false) },
+                Key { kind: "bar".into(), mods: KeyModifiers::from_fn(|_| true) },
             ])
-            .contains(&KeySequence::from_iter([Key(
-                "foo".into(),
-                KeyModifiers::from_fn(|_| false)
-            )]))
+            .contains(&KeySequence::from_iter([Key{
+                kind: "foo".into(),
+                mods: KeyModifiers::from_fn(|_| false)
+            }]))
         );
     }
 
@@ -107,14 +225,14 @@ mod tests {
     fn key_sequence_flatten() {
         assert_eq!(
             KeySequence::from_iter([
-                Key("foo".into(), KeyModifiers::from_fn(|_| false)),
-                Key("bar".into(), KeyModifiers::from_fn(|_| false)),
-                Key("foo".into(), KeyModifiers::from_fn(|_| true)),
-                Key("bar".into(), KeyModifiers::from_fn(|_| true)),
+                Key { kind: "foo".into(), mods: KeyModifiers::from_fn(|_| false) },
+                Key { kind: "bar".into(), mods: KeyModifiers::from_fn(|_| false) },
+                Key { kind: "foo".into(), mods: KeyModifiers::from_fn(|_| true) },
+                Key { kind: "bar".into(), mods: KeyModifiers::from_fn(|_| true) },
             ]),
             KeySequence::from_iter([
-                Key("foobar".into(), KeyModifiers::from_fn(|_| false)),
-                Key("foobar".into(), KeyModifiers::from_fn(|_| true)),
+                Key { kind: "foobar".into(), mods: KeyModifiers::from_fn(|_| false) },
+                Key { kind: "foobar".into(), mods: KeyModifiers::from_fn(|_| true) },
             ])
         );
     }
