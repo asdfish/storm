@@ -79,7 +79,7 @@ mod tests {
         let mut exploded = false;
 
         {
-            let mut bomb = Bomb::new((), |_| exploded = true);
+            let bomb = Bomb::new((), |_| exploded = true);
             bomb.diffuse();
         }
 
@@ -90,7 +90,7 @@ mod tests {
         let mut exploded = false;
 
         {
-            let mut bomb = Bomb::new((), |_| exploded = true);
+            let _bomb = Bomb::new((), |_| exploded = true);
         }
 
         assert_eq!(exploded, true);

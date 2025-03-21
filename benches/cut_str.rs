@@ -1,37 +1,35 @@
 use {
     criterion::{BatchSize, Criterion, black_box, criterion_group, criterion_main},
     std::{borrow::Cow, rc::Rc},
-    storm::split_str::SplitStr,
+    storm::cut_str::CutStr,
 };
 
-pub fn bench_split_str(c: &mut Criterion) {
+pub fn bench_cut_str(c: &mut Criterion) {
     const STRING_COUNT: usize = 10;
     const STRING_LEN: usize = 10;
 
-    let mut group = c.benchmark_group("split_str");
+    let mut group = c.benchmark_group("cut_str");
 
     group
-        .bench_function("split_str", |b| {
+        .bench_function("cut_str", |b| {
             b.iter_batched(
                 || {
                     (0..STRING_COUNT)
                         .map(|_| {
                             (0..STRING_LEN)
                                 .map(|_| fastrand::char(..))
-                                .collect::<Box<str>>()
+                                .collect::<String>()
                         })
-                        .map(Rc::<str>::from)
-                        .map(|str| SplitStr::Split {
-                            range: 0..str.len(),
+                        .map(|str| CutStr::Cut {
+                            head: 0,
                             str,
                         })
                         .collect::<Vec<_>>()
                 },
                 |strings| {
                     strings.into_iter().for_each(|str| {
-                        let (left, right) = str.split_at_checked(black_box(0)).unwrap();
-                        black_box(left);
-                        black_box(right);
+                        let str = str.cut_checked(black_box(0)).unwrap();
+                        black_box(str);
                     })
                 },
                 BatchSize::SmallInput,
@@ -59,5 +57,5 @@ pub fn bench_split_str(c: &mut Criterion) {
     group.finish();
 }
 
-criterion_group!(split_str, bench_split_str);
-criterion_main!(split_str);
+criterion_group!(cut_str, bench_cut_str);
+criterion_main!(cut_str);

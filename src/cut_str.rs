@@ -1,4 +1,4 @@
-use std::{borrow::Cow, ops::Range, rc::Rc};
+use std::borrow::Cow;
 
 /// String type that splits without extra allocations (will allocate once if the `Cow::Owned` needs
 /// to shed excess capacity).
@@ -36,7 +36,6 @@ impl CutStr<'_> {
                     return None;
                 }
 
-                let len = str.len();
                 Some(Self::Cut {
                     str,
                     head: index,
@@ -60,23 +59,18 @@ mod tests {
 
     #[test]
     fn split() {
-        // spliting [str]s
+        // cut [str]s
         let str = CutStr::from("goodbye");
+        let str = str.cut_checked(4).unwrap();
+        assert_eq!(str.as_ref(), "bye");
 
-        let (good, bye) = str.split_at_checked(4).unwrap();
-        assert_eq!(good.as_ref(), "good");
-        assert_eq!(bye.as_ref(), "bye");
-
-        // spliting [String]s
+        // cut [String]s
         let str = CutStr::from("goodbye".to_string());
-        let (good, bye) = str.split_at_checked(4).unwrap();
-        assert_eq!(good.as_ref(), "good");
-        drop(good);
-        assert_eq!(bye.as_ref(), "bye");
+        let str = str.cut_checked(4).unwrap();
+        assert_eq!(str.as_ref(), "bye");
 
-        // spliting [CutStr::Split]s
-        let (b, ye) = bye.split_at_checked(1).unwrap();
-        assert_eq!(b.as_ref(), "b");
-        assert_eq!(ye.as_ref(), "ye");
+        // cut [CutStr::Cut]s
+        let str = str.cut_checked(1).unwrap();
+        assert_eq!(str.as_ref(), "ye");
     }
 }
