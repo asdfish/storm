@@ -17,7 +17,7 @@ where
     pub const fn new(data: T, payload: P) -> Self {
         Self {
             data: Some(data),
-            payload: payload,
+            payload,
         }
     }
 

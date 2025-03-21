@@ -20,7 +20,7 @@ impl<'a> From<String> for SplitStr<'a> {
 impl AsRef<str> for SplitStr<'_> {
     fn as_ref(&self) -> &str {
         match self {
-            Self::Cow(str) => &str,
+            Self::Cow(str) => str,
             Self::Split { str, range } => &str[range.clone()], // ranges are fast to clone
         }
     }
@@ -61,7 +61,7 @@ impl SplitStr<'_> {
                         range: range.start..index,
                     },
                     Self::Split {
-                        str: str,
+                        str,
                         range: index..range.end,
                     },
                 ))
