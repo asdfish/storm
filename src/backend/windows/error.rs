@@ -17,8 +17,7 @@ use {
             errhandlingapi::GetLastError,
             winbase::{
                 FORMAT_MESSAGE_ALLOCATE_BUFFER, FORMAT_MESSAGE_FROM_SYSTEM,
-                FORMAT_MESSAGE_IGNORE_INSERTS, FormatMessageW,
-                LocalFree,
+                FORMAT_MESSAGE_IGNORE_INSERTS, FormatMessageW, LocalFree,
             },
             winnt::{LANG_NEUTRAL, LPWSTR, MAKELANGID, SUBLANG_DEFAULT, WCHAR},
         },
@@ -96,9 +95,11 @@ impl WinapiError {
 
 impl Display for WinapiError {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        let mut str = Bomb::new(null_mut(), |ptr: &mut *mut WCHAR| if !ptr.is_null() {
-            unsafe {
-                LocalFree(*ptr as *mut c_void);
+        let mut str = Bomb::new(null_mut(), |ptr: &mut *mut WCHAR| {
+            if !ptr.is_null() {
+                unsafe {
+                    LocalFree(*ptr as *mut c_void);
+                }
             }
         });
 

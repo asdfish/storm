@@ -4,7 +4,6 @@ use {
         config::{Config, key::KeyModifiers},
         error,
     },
-    enum_map::{Enum, EnumMap},
     oneshot,
     std::{
         collections::{HashMap, hash_map},

@@ -153,7 +153,7 @@ impl<'arg> Iterator for Argument<'arg> {
 /// # Examples
 ///
 /// ```
-/// # use opts::{Flag, Parser};
+/// # use storm::config::opts::{Flag, Parser};
 ///
 /// let mut parser = Parser::new(["ls", "-lsh", "foo"].iter());
 /// assert_eq!(parser.next(), Some(Flag::Value));

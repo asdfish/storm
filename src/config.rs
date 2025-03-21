@@ -1,15 +1,14 @@
 pub mod key;
-mod opts;
+pub mod opts;
 
 use {
     enum_map::EnumMap,
-    key::{Key, KeyAction, KeyModifier},
+    key::{Key, KeyAction},
     opts::Flag,
     smallvec::SmallVec,
     std::{
         cell::{RefCell, RefMut},
         cmp::{Ordering, PartialOrd},
-        collections::VecDeque,
         ffi::{CStr, c_char, c_int},
         fs::File,
         io::{self, Write, stderr},
@@ -196,11 +195,7 @@ mod tests {
                 ..Default::default()
             };
 
-            [
-                LogLevel::None,
-                LogLevel::Quiet,
-                LogLevel::Verbose,
-            ]
+            [LogLevel::None, LogLevel::Quiet, LogLevel::Verbose]
                 .into_iter()
                 .map(|level| (level, expected(level)))
                 .for_each(|(level, expected)| {
