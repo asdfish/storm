@@ -16,7 +16,7 @@ widestring = "1.1.0"
 winapi = { version = "0.3.9", features = ["errhandlingapi", "std", "winbase", "winuser"] }
 
 [[bench]]
-name = "split_str"
+name = "cut_str"
 harness = false
 
 [dev-dependencies]

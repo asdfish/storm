@@ -1,5 +1,5 @@
 use {
-    crate::split_str::SplitStr,
+    crate::cut_str::CutStr,
     enum_map::{Enum, EnumMap},
     std::{borrow::Cow, collections::VecDeque},
 };
@@ -10,7 +10,7 @@ pub enum KeyAction {
 }
 
 #[derive(Debug, PartialEq)]
-pub struct Key<'a>(SplitStr<'a>, KeyModifiers);
+pub struct Key<'a>(CutStr<'a>, KeyModifiers);
 #[derive(Debug, PartialEq)]
 pub struct KeySequence<'a>(VecDeque<Key<'a>>);
 impl<'a> FromIterator<(Cow<'a, str>, KeyModifiers)> for KeySequence<'a> {
@@ -28,7 +28,7 @@ impl<'a> FromIterator<(Cow<'a, str>, KeyModifiers)> for KeySequence<'a> {
                 next_str.to_mut().push_str(&peeked_str);
             }
 
-            deque.push_back(Key(SplitStr::Cow(next_str), next_mods));
+            deque.push_back(Key(CutStr::Cow(next_str), next_mods));
         }
 
         Self(deque)
