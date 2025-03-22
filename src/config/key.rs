@@ -1,3 +1,5 @@
+mod parser;
+
 use {
     enum_map::{Enum, EnumMap},
     smallvec::SmallVec,
@@ -7,10 +9,6 @@ use {
         ops::Not,
     },
 };
-
-pub trait Parser<'a>: Sized {
-    fn parse(_: &'a str) -> Result<(Self, &'a str), ParserError<'a>>;
-}
 
 #[derive(Enum)]
 pub enum KeyAction {
@@ -23,6 +21,14 @@ pub struct Key<'a> {
     /// The modifiers that are active during
     mods: KeyModifiers,
     kind: KeyKind<'a>,
+}
+impl<'a> Key<'a> {
+    pub const fn new(mods: KeyModifiers, kind: KeyKind<'a>) -> Self {
+        Self {
+            mods,
+            kind,
+        }
+    }
 }
 impl Display for Key<'_> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
@@ -47,7 +53,7 @@ impl Display for KeyKind<'_> {
         match self {
             Self::Invisible(key) => write!(f, "{}", key),
             Self::Visible(key) => key.chars().try_for_each(|ch| match ch {
-                'M' | 'C' | 'S' | 'L' | '<' | '>' => write!(f, "\\{}", ch),
+                'M' | 'C' | 'S' | 'L' | '<' => write!(f, "\\{}", ch),
                 ch => write!(f, "{}", ch),
             }),
         }
@@ -63,19 +69,6 @@ impl<'a> From<&'a str> for KeyKind<'a> {
         Self::Visible(key.into())
     }
 }
-impl<'a> Parser<'a> for KeyKind<'a> {
-    fn parse(input: &'a str) -> Result<(Self, &'a str), ParserError<'a>> {
-        if input.starts_with("<") {
-            InvisibleKey::parse(input)
-                .map(|(key, out)| (Self::Invisible(key), out))
-        } else {
-            let mut out = Cow::Borrowed("");
-            let mut chars = input.char_indices();
-
-            todo!()
-        }
-    }
-}
 
 #[derive(Debug, PartialEq)]
 pub enum InvisibleKey {
@@ -89,7 +82,7 @@ impl Display for InvisibleKey {
         write!(f, "<")?;
 
         match self {
-            Self::F(n) => write!(f, "F{n}"),
+            Self::F(n) => write!(f, "F-{n}"),
             Self::PageUp => write!(f, "PG-UP"),
             Self::PageDown => write!(f, "PG-DN"),
         }?;
@@ -97,35 +90,8 @@ impl Display for InvisibleKey {
         write!(f, ">")
     }
 }
-impl<'a> Parser<'a> for InvisibleKey {
-    fn parse(input: &'a str) -> Result<(Self, &'a str), ParserError<'a>> {
-        if !input.starts_with('<') {
-            Err(ParserError::None)
-        } else if let Some(end) = input.find('>') {
-            match &input[1..end] {
-                "F" => {
-                    let fkey = input[2..].chars().try_fold(0_u8, |fold, ch| {
-                        let err = || ParserError::UnknownSpecialKey(&input[1..end]);
 
-                        fold.checked_mul(10)
-                            .ok_or_else(err)?
-                            .checked_add(ch.to_digit(10).ok_or_else(err)? as u8)
-                            .ok_or_else(err)
-                    })?;
-
-                    Ok((Self::F(fkey), &input[end + 1..]))
-                }
-                "PG-UP" => Ok((Self::PageUp, &input[end + 1..])),
-                "PG-DN" => Ok((Self::PageDown, &input[end + 1..])),
-                key => Err(ParserError::UnknownSpecialKey(key)),
-            }
-        } else {
-            Err(ParserError::UnclosedSpecialKey(input))
-        }
-    }
-}
-
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Default, PartialEq)]
 /// The keys *never* contain the same modifiers while being chained.
 pub struct KeySequence<'a>(SmallVec<[Key<'a>; 4]>);
 impl KeySequence<'_> {
@@ -189,8 +155,13 @@ impl<'a> FromIterator<Key<'a>> for KeySequence<'a> {
         output
     }
 }
+impl Display for KeySequence<'_> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        self.0.iter().try_for_each(|key| write!(f, "{}", key))
+    }
+}
 
-#[derive(Clone, Copy, Debug, Enum)]
+#[derive(Clone, Copy, Debug, Enum, PartialEq)]
 /// The possible modifier keys from a key press.
 ///
 /// Does not distinguish between left and right variants.
@@ -202,45 +173,23 @@ pub enum KeyModifier {
     /// Logo/windows key.
     Super,
 }
+impl KeyModifier {
+    pub const VARIANTS: [(&str, Self); 4] = [
+        ("M-", Self::Alt),
+        ("C-", Self::Control),
+        ("S-", Self::Shift),
+        ("L-", Self::Super),
+    ];
+}
 impl Display for KeyModifier {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::Alt => write!(f, "M-"),
-            Self::Control => write!(f, "C-"),
-            Self::Shift => write!(f, "S-"),
-            Self::Super => write!(f, "L-"),
-        }
-    }
-}
-impl<'a> Parser<'a> for KeyModifier {
-    fn parse(input: &'a str) -> Result<(Self, &'a str), ParserError<'a>> {
-        macro_rules! parse_modifiers {
-            ($(($head:expr, $modifier:expr)),* $(,)?) => {
-                match input {
-                    $(input if input.starts_with($head) => Ok(($modifier, &input[const {
-                        $head.len()
-                    }..])),)*
-                    _ => Err(ParserError::None),
-                }
-            }
-        }
-
-        parse_modifiers![
-            ("M-", Self::Alt),
-            ("C-", Self::Control),
-            ("S-", Self::Shift),
-            ("L-", Self::Super),
-        ]
+        write!(f, "{}", Self::VARIANTS[*self as usize].0)
     }
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Default, PartialEq)]
 pub struct KeyModifiers(EnumMap<KeyModifier, bool>);
 impl KeyModifiers {
-    pub fn new() -> Self {
-        Self::from_fn(|_| false)
-    }
-
     pub fn from_fn<F>(f: F) -> Self
     where
         F: FnMut(KeyModifier) -> bool,
@@ -265,33 +214,34 @@ impl Display for KeyModifiers {
             .try_for_each(|modifier| write!(f, "{}", modifier))
     }
 }
+impl Extend<KeyModifier> for KeyModifiers {
+    fn extend<I>(&mut self, iter: I)
+    where I: IntoIterator<Item = KeyModifier> {
+        iter.into_iter()
+            .for_each(|key_mod| self.push(key_mod))
+    }
+}
 impl FromIterator<(KeyModifier, bool)> for KeyModifiers {
     fn from_iter<T>(iter: T) -> Self
-    where T: IntoIterator<Item = (KeyModifier, bool)> {
-        Self(EnumMap::from_iter(iter))
+    where
+        T: IntoIterator<Item = (KeyModifier, bool)>,
+    {
+        Self::from_iter(
+            iter.into_iter()
+                .filter_map(|(key, active)| active.then_some(key)),
+        )
     }
 }
-impl<'a> Parser<'a> for KeyModifiers {
-    fn parse(mut input: &'a str) -> Result<(Self, &'a str), ParserError<'a>> {
-        let mut output = Self::new();
-        while let Ok((modifier, next_input)) = KeyModifier::parse(input) {
-            output.push(modifier);
-            input = next_input;
-        }
+impl FromIterator<KeyModifier> for KeyModifiers {
+    fn from_iter<T>(iter: T) -> Self
+    where
+        T: IntoIterator<Item = KeyModifier>,
+    {
+        let mut output = Self::default();
+        output.extend(iter);
 
-        if output.is_active() {
-            Ok((output, input))
-        } else {
-            Err(ParserError::None)
-        }
+        output
     }
-}
-
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub enum ParserError<'a> {
-    None,
-    UnknownSpecialKey(&'a str),
-    UnclosedSpecialKey(&'a str),
 }
 
 #[cfg(test)]
