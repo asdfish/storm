@@ -12,7 +12,7 @@ use {
         ffi::{CStr, c_char, c_int},
         fs::File,
         io::{self, Write, stderr},
-        ops::{DerefMut, Not},
+        ops::DerefMut,
         process::{Command, exit},
     },
 };
