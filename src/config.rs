@@ -12,7 +12,7 @@ use {
         ffi::{CStr, c_char, c_int},
         fs::File,
         io::{self, Write, stderr},
-        ops::DerefMut,
+        ops::{DerefMut, Not},
         process::{Command, exit},
     },
 };
@@ -125,19 +125,23 @@ Options:
     ///
     /// Errors in argument parsing are always printed to stderr.
     pub unsafe fn apply_argv(&mut self, argc: c_int, argv: *const *const c_char) {
-        if argc > 0 {
+        if argc > 0 && !argv.is_null() {
             let argv = (0..argc)
                 .skip(1)
-                // SAFETY: argc is not incremented by zero, which makes it never null
-                .map(|i| unsafe {
-                    argv.add(
+                // SAFETY: null check is above
+                .map(|i| {
+                    argv.wrapping_offset(
                         i.try_into()
-                            .expect("argc should be filtered to be positive above"),
+                            .expect("internal error: argc should be filtered to be positive above"),
                     )
                 })
-                // SAFETY: the pointer will never be null since the address would always be greater
-                // than argv + 1 due to the skip above
-                .map(|arg| unsafe { CStr::from_ptr(*arg) })
+                .filter_map(|arg| {
+                    // SAFETY: will never be null
+                    let arg = unsafe { *arg };
+                    if arg.is_null() { None } else { Some(arg) }
+                })
+                // SAFETY: null checking is performed above
+                .map(|arg| unsafe { CStr::from_ptr(arg) })
                 .filter_map(|arg| match arg.to_str() {
                     Ok(arg) => Some(arg),
                     Err(err) => {

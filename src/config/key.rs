@@ -4,8 +4,8 @@ use {
     std::{
         borrow::Cow,
         fmt::{self, Display, Formatter},
-        str,
         ops::Not,
+        str,
     },
 };
 
@@ -33,10 +33,7 @@ pub struct Key<'a> {
 }
 impl<'a> Key<'a> {
     pub const fn new(mods: KeyModifiers, kind: KeyKind<'a>) -> Self {
-        Self {
-            mods,
-            kind,
-        }
+        Self { mods, kind }
     }
 }
 impl Display for Key<'_> {
@@ -348,9 +345,10 @@ impl Display for KeyModifiers {
 }
 impl Extend<KeyModifier> for KeyModifiers {
     fn extend<I>(&mut self, iter: I)
-    where I: IntoIterator<Item = KeyModifier> {
-        iter.into_iter()
-            .for_each(|key_mod| self.push(key_mod))
+    where
+        I: IntoIterator<Item = KeyModifier>,
+    {
+        iter.into_iter().for_each(|key_mod| self.push(key_mod))
     }
 }
 impl FromIterator<(KeyModifier, bool)> for KeyModifiers {
