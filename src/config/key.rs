@@ -265,6 +265,12 @@ impl Display for KeyModifiers {
             .try_for_each(|modifier| write!(f, "{}", modifier))
     }
 }
+impl FromIterator<(KeyModifier, bool)> for KeyModifiers {
+    fn from_iter<T>(iter: T) -> Self
+    where T: IntoIterator<Item = (KeyModifier, bool)> {
+        Self(EnumMap::from_iter(iter))
+    }
+}
 impl<'a> Parser<'a> for KeyModifiers {
     fn parse(mut input: &'a str) -> Result<(Self, &'a str), ParserError<'a>> {
         let mut output = Self::new();
