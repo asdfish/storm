@@ -3,20 +3,8 @@ use {
     std::{borrow::Cow, str},
 };
 
-macro_rules! impl_parsable_for {
-    ($output:ty, $parser:ty) => {
-        impl<'a> Parsable<'a> for $output {
-            type Parser = $parser;
-        }
-    };
-}
-
-pub trait Parsable<'a>: Sized {
-    type Parser: Parser<'a, Output = Self>;
-}
 pub trait Parser<'a>: Sized {
-    type Output;
-    fn parse(_: &'a str) -> Option<Result<(Self::Output, &'a str), ParserError<'a>>>;
+    fn parse(_: &'a str) -> Option<Result<(Self, &'a str), ParserError<'a>>>;
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -26,17 +14,14 @@ pub enum ParserError<'a> {
     UnclosedSpecialKey(&'a str),
 }
 
-pub struct KeyParser;
-impl<'a> Parser<'a> for KeyParser {
-    type Output = Key<'a>;
-
+impl<'a> Parser<'a> for Key<'a> {
     fn parse(input: &'a str) -> Option<Result<(Key<'a>, &'a str), ParserError<'a>>> {
-        let (modifiers, input) = match KeyModifiersParser::parse(input).transpose() {
+        let (modifiers, input) = match KeyModifiers::parse(input).transpose() {
             Ok(o) => o,
             Err(err) => return Some(Err(err)),
         }
         .unwrap_or_else(|| (KeyModifiers::default(), input));
-        let (kind, input) = match KeyKindParser::parse(input)? {
+        let (kind, input) = match KeyKind::parse(input)? {
             Ok(o) => o,
             Err(err) => return Some(Err(err)),
         };
@@ -44,16 +29,12 @@ impl<'a> Parser<'a> for KeyParser {
         Some(Ok((Key::new(modifiers, kind), input)))
     }
 }
-impl_parsable_for!(Key<'a>, KeyParser);
 
-pub struct KeyKindParser;
-impl<'a> Parser<'a> for KeyKindParser {
-    type Output = KeyKind<'a>;
-
-    fn parse(input: &'a str) -> Option<Result<(Self::Output, &'a str), ParserError<'a>>> {
+impl<'a> Parser<'a> for KeyKind<'a> {
+    fn parse(input: &'a str) -> Option<Result<(Self, &'a str), ParserError<'a>>> {
         match input {
             "" => None,
-            input if input.starts_with('<') => InvisibleKeyParser::parse(input)
+            input if input.starts_with('<') => InvisibleKey::parse(input)
                 .map(|result| result.map(|(key, next)| (KeyKind::Invisible(key), next))),
             input => {
                 let mut keys = Cow::Borrowed("");
@@ -98,13 +79,9 @@ impl<'a> Parser<'a> for KeyKindParser {
         }
     }
 }
-impl_parsable_for!(KeyKind<'a>, KeyKindParser);
 
-pub struct InvisibleKeyParser;
-impl<'a> Parser<'a> for InvisibleKeyParser {
-    type Output = InvisibleKey;
-
-    fn parse(input: &'a str) -> Option<Result<(Self::Output, &'a str), ParserError<'a>>> {
+impl<'a> Parser<'a> for InvisibleKey {
+    fn parse(input: &'a str) -> Option<Result<(Self, &'a str), ParserError<'a>>> {
         if input.is_empty() || !input.starts_with('<') {
             None
         } else if let Some(end) = input.find('>') {
@@ -134,12 +111,8 @@ impl<'a> Parser<'a> for InvisibleKeyParser {
         }
     }
 }
-impl_parsable_for!(InvisibleKey, InvisibleKeyParser);
 
-pub struct KeyModifierParser;
-impl<'a> Parser<'a> for KeyModifierParser {
-    type Output = KeyModifier;
-
+impl<'a> Parser<'a> for KeyModifier {
     fn parse(input: &'a str) -> Option<Result<(KeyModifier, &'a str), ParserError<'a>>> {
         match input {
             input if input.starts_with("M-") => Some(Ok((KeyModifier::Alt, &input[2..]))),
@@ -150,17 +123,13 @@ impl<'a> Parser<'a> for KeyModifierParser {
         }
     }
 }
-impl_parsable_for!(KeyModifier, KeyModifierParser);
 
-pub struct KeyModifiersParser;
-impl<'a> Parser<'a> for KeyModifiersParser {
-    type Output = KeyModifiers;
-
+impl<'a> Parser<'a> for KeyModifiers {
     fn parse(mut input: &'a str) -> Option<Result<(KeyModifiers, &'a str), ParserError<'a>>> {
         let mut some = false;
         let mut key_mods = KeyModifiers::default();
 
-        while let Some((key_mod, next_input)) = KeyModifierParser::parse(input).transpose().expect("internal error: the implementation of [KeyModifierParser::parse] should never return any errors")
+        while let Some((key_mod, next_input)) = KeyModifier::parse(input).transpose().expect("internal error: the implementation of [KeyModifierParser::parse] should never return any errors")
         {
             some = true;
             key_mods.push(key_mod);
@@ -171,16 +140,13 @@ impl<'a> Parser<'a> for KeyModifiersParser {
         some.then_some(Ok((key_mods, input)))
     }
 }
-impl_parsable_for!(KeyModifiers, KeyModifiersParser);
 
-pub struct KeySequenceParser;
-impl<'a> Parser<'a> for KeySequenceParser {
-    type Output = KeySequence<'a>;
+impl<'a> Parser<'a> for KeySequence<'a> {
     fn parse(mut input: &'a str) -> Option<Result<(KeySequence<'a>, &'a str), ParserError<'a>>> {
         let mut some = false;
         let mut key_seq = KeySequence::new();
 
-        while let Some((key, next_input)) = match KeyParser::parse(input).transpose() {
+        while let Some((key, next_input)) = match Key::parse(input).transpose() {
             Ok(o) => o,
             Err(err) => return Some(Err(err)),
         } {
@@ -192,49 +158,47 @@ impl<'a> Parser<'a> for KeySequenceParser {
         some.then_some(Ok((key_seq, input)))
     }
 }
-impl_parsable_for!(KeySequence<'a>, KeySequenceParser);
 
 #[cfg(test)]
 mod tests {
     use {
         super::*,
         itertools::Itertools,
-        std::fmt::{Debug, Display},
+        std::fmt::{Debug, Display, Write},
     };
 
-    fn test_empty_parser<T>()
-    where
-        T: for<'a> Parser<'a>,
-        for<'a> <T as Parser<'a>>::Output: Debug + PartialEq,
-    {
-        assert_eq!(T::parse(""), None);
-    }
-
+    /// [test_parser_eq] with format checking.
     fn test_parser<I, S, T>(iter: I)
     where
         I: IntoIterator<Item = (S, T)>,
         S: AsRef<str>,
-        T: Debug + Display + for<'a> Parsable<'a> + PartialEq,
+        T: Debug + Display + for<'a> Parser<'a> + PartialEq,
     {
-        iter.into_iter().for_each(|(input, output)| {
-            let parser_output = <T as Parsable>::Parser::parse(input.as_ref())
-                .unwrap()
-                .unwrap()
-                .0;
-            assert_eq!(parser_output, output);
+        let mut input_buffer = String::new();
+        let mut expected_buffer = String::new();
 
-            let display_output = format!("{}", parser_output);
-            let display_output = <T as Parsable>::Parser::parse(&display_output)
-                .unwrap()
-                .unwrap()
-                .0;
-            assert_eq!(display_output, output);
+        iter.into_iter().for_each(|(input, expected)| {
+            let input = T::parse(input.as_ref()).unwrap().unwrap().0;
+            assert_eq!(input, expected);
+
+            [
+                (&mut input_buffer, &input),
+                (&mut expected_buffer, &expected),
+            ]
+            .into_iter()
+            .for_each(|(buffer, token)| {
+                buffer.clear();
+                write!(buffer, "{}", token).unwrap();
+            });
+            assert_eq!(input_buffer, expected_buffer);
+
+            let display = T::parse(&expected_buffer).unwrap().unwrap().0;
+            assert_eq!(display, expected);
         })
     }
 
     #[test]
     fn invisible_key() {
-        test_empty_parser::<InvisibleKeyParser>();
         test_parser((u8::MIN..=u8::MAX).map(|i| (format!("<F-{}>", i), InvisibleKey::F(i))));
         test_parser([
             ("<PG-UP>", InvisibleKey::PageUp),
@@ -244,13 +208,11 @@ mod tests {
 
     #[test]
     fn key_modifier() {
-        test_empty_parser::<KeyModifierParser>();
         test_parser(KeyModifier::VARIANTS);
     }
 
     #[test]
     fn key_modifiers() {
-        test_empty_parser::<KeyModifiersParser>();
         test_parser(
             (1..=4)
                 .flat_map(|n| KeyModifier::VARIANTS.into_iter().permutations(n))
@@ -260,30 +222,20 @@ mod tests {
 
     #[test]
     fn key_kind() {
-        test_empty_parser::<KeyKindParser>();
         assert_eq!(
-            KeyKindParser::parse("foo bar<F-10>"),
+            KeyKind::parse("foo bar<F-10>"),
             Some(Ok((KeyKind::Visible("foo bar".into()), "<F-10>"))),
         );
 
         const EXPECTED: KeyKind = KeyKind::Visible(Cow::Borrowed("<C"));
 
-        let escaped_key = KeyKindParser::parse("\\<\\C").unwrap().unwrap().0;
+        let escaped_key = KeyKind::parse("\\<\\C").unwrap().unwrap().0;
         assert_eq!(escaped_key, EXPECTED);
 
         let display_key = format!("{}", escaped_key);
-        let display_key = KeyKindParser::parse(&display_key).unwrap().unwrap().0;
+        let display_key = KeyKind::parse(&display_key).unwrap().unwrap().0;
         assert_eq!(display_key, EXPECTED);
     }
 
-    // `Key*Parser` types are just the above combined, so they probably won't have any serializing/deserializing problems.
-    // Their lifetimes do not allow them to use [test_parser]
-    #[test]
-    fn key() {
-        test_empty_parser::<KeyParser>();
-        assert_eq!(
-            KeyParser::parse("foo"),
-            Some(Ok((Key::new(Default::default(), "foo".into()), "")))
-        );
-    }
+    // `Key*` types are just the above combined, so they won't have anything worth testing.
 }
