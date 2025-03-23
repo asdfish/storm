@@ -1,7 +1,7 @@
 use {
     crate::{
         backend::{self, Window},
-        config::{Config, key::KeyModifiers},
+        config::{Config, key::Key},
         error,
     },
     std::{
@@ -71,9 +71,8 @@ where
                             self.tile_windows();
                         }
                     }
-                    Ok(Event::Key(consume, modifiers, key)) => {
-                        println!("key event: {:?}", key);
-                        println!("modifiers, {:?}", modifiers);
+                    Ok(Event::Key(consume, key)) => {
+                        println!("key: {:?}", key);
                         consume.send(false).expect(error::CLOSED_CHANNEL);
                     }
                     Err(e) => self
@@ -98,5 +97,5 @@ pub enum Event<W: Window> {
         workspace: u8,
         window: W,
     },
-    Key(oneshot::Sender<bool>, KeyModifiers, String),
+    Key(oneshot::Sender<bool>, Key<'static>),
 }

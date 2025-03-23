@@ -2,26 +2,24 @@ use {
     super::EVENT_SENDER,
     crate::{
         backend::windows::{WinapiError, WindowsBackendError},
-        config::key::{KeyModifier, KeyModifiers},
+        config::key::{InvisibleKey, Key, KeyKind, KeyModifier, KeyModifiers},
         error,
         state::Event,
     },
-    std::{num::NonZeroUsize, ptr::null_mut},
+    std::{borrow::Cow, num::NonZeroUsize, ptr::null_mut},
     widestring::ustr::U16Str,
     winapi::{
         ctypes::c_int,
         shared::minwindef::{LPARAM, LRESULT, WPARAM},
         um::winuser::{
-            CallNextHookEx, GetKeyState, GetKeyboardState, KBDLLHOOKSTRUCT, ToUnicode, VK_CONTROL,
-            VK_LWIN, VK_MENU, VK_RWIN, VK_SHIFT, WM_KEYDOWN,
+            CallNextHookEx, GetKeyState, GetKeyboardState, ToUnicode, KBDLLHOOKSTRUCT, VK_CONTROL,
+            VK_F1, VK_F24, VK_LWIN, VK_MENU, VK_NEXT, VK_PRIOR, VK_RWIN, VK_SHIFT, WM_KEYDOWN,
         },
     },
 };
 
-type KeyPress = (KeyModifiers, String);
-
 /// Returns Ok(None) for dead keys.
-fn translate_key(key_diff: LPARAM) -> Result<Option<KeyPress>, WindowsBackendError> {
+fn translate_key(key_diff: LPARAM) -> Result<Option<Key<'static>>, WindowsBackendError> {
     let key_diff = unsafe { (key_diff as *mut KBDLLHOOKSTRUCT).as_ref() }
         .ok_or(WindowsBackendError::NullKbdllhookstruct)?;
 
@@ -44,32 +42,54 @@ fn translate_key(key_diff: LPARAM) -> Result<Option<KeyPress>, WindowsBackendErr
     })
     .collect::<KeyModifiers>();
 
-    let mut keyboard_state = [0; 256];
-    WinapiError::from_return(unsafe { GetKeyboardState(keyboard_state.as_mut_ptr()) })?;
+    match key_diff.vkCode as i32 {
+        key @ VK_F1..=VK_F24 => Ok(Some(Key::new(
+            modifiers,
+            KeyKind::Invisible(InvisibleKey::F(
+                (key + 1 - VK_F1)
+                    .try_into()
+                    .expect("internal error: the pattern should ensure this is valid"),
+            )),
+        ))),
+        VK_PRIOR => Ok(Some(Key::new(
+            modifiers,
+            KeyKind::Invisible(InvisibleKey::PageUp),
+        ))),
+        VK_NEXT => Ok(Some(Key::new(
+            modifiers,
+            KeyKind::Invisible(InvisibleKey::PageDown),
+        ))),
+        _ => {
+            let mut keyboard_state = [0; 256];
+            WinapiError::from_return(unsafe { GetKeyboardState(keyboard_state.as_mut_ptr()) })?;
 
-    let mut buffer = [0; 2];
+            let mut buffer = [0; 2];
 
-    let Some(len) = (match unsafe {
-        ToUnicode(
-            key_diff.vkCode,
-            key_diff.scanCode,
-            keyboard_state.as_ptr(),
-            buffer.as_mut_ptr(),
-            2,
-            0,
-        )
-    } {
-        ..=0 => None,
-        1 => Some(const { NonZeroUsize::new(1).unwrap() }),
-        2.. => Some(const { NonZeroUsize::new(2).unwrap() }),
-    }) else {
-        return Ok(None);
-    };
+            let Some(len) = (match unsafe {
+                ToUnicode(
+                    key_diff.vkCode,
+                    key_diff.scanCode,
+                    keyboard_state.as_ptr(),
+                    buffer.as_mut_ptr(),
+                    2,
+                    0,
+                )
+            } {
+                ..=0 => None,
+                1 => Some(const { NonZeroUsize::new(1).unwrap() }),
+                2.. => Some(const { NonZeroUsize::new(2).unwrap() }),
+            }) else {
+                return Ok(None);
+            };
 
-    Ok(Some((
-        modifiers,
-        U16Str::from_slice(&buffer[..len.get()]).to_string_lossy(),
-    )))
+            Ok(Some(Key::new(
+                modifiers,
+                KeyKind::Visible(Cow::Owned(
+                    U16Str::from_slice(&buffer[..len.get()]).to_string_lossy(),
+                )),
+            )))
+        }
+    }
 }
 
 pub unsafe extern "system" fn key_hook(
@@ -92,8 +112,8 @@ pub unsafe extern "system" fn key_hook(
             let (tx, rx) = oneshot::channel();
 
             match translate_key(key_diff) {
-                Ok(Some((modifiers, text))) => {
-                    send(Ok(Event::Key(tx, modifiers, text)));
+                Ok(Some(key)) => {
+                    send(Ok(Event::Key(tx, key)));
 
                     if rx.recv().unwrap_or(false) {
                         return 1;
