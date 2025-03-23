@@ -9,11 +9,11 @@ mod state;
 mod str;
 
 use {
+    config::{ApplyArgvError, ApplyError, Config},
     std::{
         env,
         ffi::{c_char, c_int},
     },
-    config::{ApplyArgvError, ApplyError, Config},
 };
 
 // SAFETY: every c program has done this since the dawn of time
