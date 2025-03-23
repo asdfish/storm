@@ -103,7 +103,7 @@ pub unsafe extern "system" fn key_hook(
         return call_next_hook();
     }
 
-    if event_ident == WM_KEYDOWN.try_into().expect("internal error: `WM_KEYDOWN` should be comparable with the second parameter of a `LowlevelKeyboardProc`") {
+    if event_ident == WM_KEYDOWN as WPARAM {
         if let Some(sender) = EVENT_SENDER.read().as_ref() {
             let send = |event|
                 sender.send(event)
