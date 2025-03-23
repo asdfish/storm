@@ -1,10 +1,7 @@
 #![cfg_attr(not(test), no_main)]
 
 use {
-    storm::{
-        *,
-        config::Config,
-    },
+    storm::config::{ApplyArgvError, ApplyError, Config},
     std::{
         env,
         ffi::{c_char, c_int},
@@ -15,8 +12,14 @@ use {
 #[cfg_attr(not(test), unsafe(no_mangle))]
 fn main(argc: c_int, argv: *const *const c_char) -> c_int {
     let mut config = Config::default();
-    // SAFETY: argc and argv should not be unsafe to dereference
-    unsafe { config.apply_argv(argc, argv) };
+    match unsafe { config.apply_argv(argc, argv) } {
+        Ok(_) => {},
+        Err(ApplyArgvError::Apply(ApplyError::Exit)) => return 0,
+        Err(err) => {
+            eprintln!("error during argument parsing: {}", err);
+            return 1;
+        }
+    }
 
     if cfg!(not(windows)) {
         config.error(|f| writeln!(f, "operating system `{}` is not supported", env::consts::OS));
@@ -25,10 +28,10 @@ fn main(argc: c_int, argv: *const *const c_char) -> c_int {
 
     #[cfg(windows)]
     {
-        state::Storm::<
-            backend::windows::WindowsBackendState,
-            backend::windows::WindowsWindow,
-            backend::windows::WindowsBackendError,
+        storm::state::Storm::<
+            storm::backend::windows::WindowsBackendState,
+            storm::backend::windows::WindowsWindow,
+            storm::backend::windows::WindowsBackendError,
         >::new(config)
         .unwrap()
         .run()

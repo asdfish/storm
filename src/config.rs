@@ -2,12 +2,9 @@ pub mod key;
 pub mod opts;
 
 use {
-    crate::str::{
-        copy_str::CopyStr,
-        const_string::ConstString,
-    },
+    crate::str::{const_string::ConstString, copy_str::CopyStr},
     enum_map::EnumMap,
-    key::{Key, KeyAction},
+    key::{KeyAction, KeySequence},
     opts::{Argv, Flag},
     phf::phf_map,
     smallvec::SmallVec,
@@ -15,8 +12,10 @@ use {
         cell::{RefCell, RefMut},
         cmp::{Ordering, PartialOrd},
         ffi::{c_char, c_int, CStr},
+        fmt::{self, Display, Formatter},
         fs::File,
         io::{self, stderr, Write},
+        num::TryFromIntError,
         ops::DerefMut,
     },
     strum::VariantArray,
@@ -66,7 +65,9 @@ pub struct Config<'a> {
     commands: SmallVec<[&'a str; 8]>,
     log_level: LogLevel,
     log_file: Option<RefCell<File>>,
-    key_bindings: EnumMap<KeyAction, SmallVec<[Key<'a>; 4]>>,
+    key_bindings: EnumMap<KeyAction, SmallVec<[KeySequence<'a>; 2]>>,
+
+    key_action: Option<KeyAction>,
 }
 impl<'a> Config<'a> {
     pub fn apply_args<I: IntoIterator<Item = S>, S: Into<CopyStr<'a>>>(
@@ -90,39 +91,37 @@ impl<'a> Config<'a> {
     /// # SAFETY
     ///
     /// `argc` must be accurate and `argv` must point to owned memory addresses
-    ///
-    /// Errors in argument parsing are always printed to stderr.
-    // TODO: change this to `impl TryFrom<(c_int, *const *const c_char)> for Argv {}`
-    pub unsafe fn apply_argv(&mut self, argc: c_int, argv: *const *const c_char) {
-        if argc > 0 && !argv.is_null() {
+    pub unsafe fn apply_argv(
+        &mut self,
+        argc: c_int,
+        argv: *const *const c_char,
+    ) -> Result<(), ApplyArgvError> {
+        if argc < 0 {
+            Err(ApplyArgvError::NegativeArgc)
+        } else if argv.is_null() {
+            Err(ApplyArgvError::NullArgv)
+        } else {
+            let argc = <c_int as TryInto<usize>>::try_into(argc)?;
             let argv = (0..argc)
-                .skip(1)
-                // SAFETY: null check is above
-                .map(|i| {
-                    argv.wrapping_offset(
-                        i.try_into()
-                            .expect("internal error: argc should be filtered to be positive above"),
-                    )
-                })
-                .filter_map(|arg| {
-                    // SAFETY: will never be null
-                    let arg = unsafe { *arg };
-                    if arg.is_null() {
-                        None
-                    } else {
-                        Some(arg)
+                .map(|i| (i, unsafe { argv.add(i) }))
+                .filter_map(|(i, ptr)| {
+                    // SAFETY: null is checked above
+                    let arg = unsafe { (*ptr).as_ref() };
+                    if arg.is_none() {
+                        eprintln!("ignoring argument {}: located at null", i);
                     }
+
+                    arg.map(|arg| (i, arg))
                 })
-                // SAFETY: null checking is performed above
-                .map(|arg| unsafe { CStr::from_ptr(arg) })
-                .filter_map(|arg| match arg.to_str() {
+                .filter_map(|(i, ptr)| match unsafe { CStr::from_ptr(ptr) }.to_str() {
                     Ok(arg) => Some(arg),
                     Err(err) => {
-                        eprintln!("ignoring argument `{:?}`: {}", arg, err);
+                        eprintln!("ignoring argument {}: {}", i, err);
                         None
                     }
                 });
-            self.apply_args(argv).unwrap();
+
+            Ok(self.apply_args(argv)?)
         }
     }
 
@@ -150,14 +149,52 @@ impl<'a> Config<'a> {
 }
 
 #[derive(Debug)]
+pub enum ApplyArgvError<'a> {
+    Apply(ApplyError<'a>),
+    NegativeArgc,
+    NullArgv,
+    TryFromInt(TryFromIntError),
+}
+impl<'a> From<ApplyError<'a>> for ApplyArgvError<'a> {
+    fn from(err: ApplyError<'a>) -> Self {
+        Self::Apply(err)
+    }
+}
+impl From<TryFromIntError> for ApplyArgvError<'_> {
+    fn from(err: TryFromIntError) -> Self {
+        Self::TryFromInt(err)
+    }
+}
+impl Display for ApplyArgvError<'_> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Apply(err) => write!(f, "{}", err),
+            Self::NegativeArgc => write!(f, "negative argc is not allowed"),
+            Self::NullArgv => write!(f, "null argv is not allowed"),
+            Self::TryFromInt(err) => write!(f, "failed to convert argc to an usize: {}", err),
+        }
+    }
+}
+
+#[derive(Debug)]
 pub enum ApplyError<'a> {
     Exit,
+    FileOpen(CopyStr<'a>, io::Error),
     MissingValue(Flag<'a>),
+    UnknownLogLevel(CopyStr<'a>),
     UnknownFlag(Flag<'a>),
+    UnknownKeyAction(CopyStr<'a>),
 }
-impl ApplyError<'_> {
-    pub const fn exit_code(&self) -> c_int {
-        matches!(self, Self::Exit) as c_int
+impl Display for ApplyError<'_> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Exit => Ok(()),
+            Self::FileOpen(path, error) => write!(f, "failed to open file `{}`: {}", path, error),
+            Self::MissingValue(flag) => write!(f, "flag `{}` is missing an argument", flag),
+            Self::UnknownLogLevel(level) => write!(f, "unknown log level: {}", level),
+            Self::UnknownFlag(flag) => write!(f, "unknown flag `{}`", flag),
+            Self::UnknownKeyAction(action) => write!(f, "unknown key action: {}", action),
+        }
     }
 }
 
@@ -167,6 +204,9 @@ enum CliFlags {
     Version,
     LogLevel,
     LogOutput,
+
+    KeyAction,
+    KeySequence,
 }
 impl CliFlags {
     const SHORT: phf::Map<char, CliFlags> = phf_map! {
@@ -174,12 +214,18 @@ impl CliFlags {
         'v' => CliFlags::Version,
         'l' => CliFlags::LogLevel,
         'o' => CliFlags::LogOutput,
+
+        'k' => CliFlags::KeyAction,
+        'K' => CliFlags::KeySequence,
     };
     const LONG: phf::Map<&str, CliFlags> = phf_map! {
         "help" => CliFlags::Help,
         "version" => CliFlags::Version,
         "log-level" => CliFlags::LogLevel,
         "log-output" => CliFlags::LogOutput,
+
+        "key-action" => CliFlags::KeyAction,
+        "key-sequence" => CliFlags::KeySequence,
     };
 
     const fn short_flag(&self) -> char {
@@ -188,6 +234,9 @@ impl CliFlags {
             Self::Version => 'v',
             Self::LogLevel => 'l',
             Self::LogOutput => 'o',
+
+            Self::KeyAction => 'k',
+            Self::KeySequence => 'K',
         }
     }
     const fn long_flag(&self) -> &'static str {
@@ -196,32 +245,53 @@ impl CliFlags {
             Self::Version => "version",
             Self::LogLevel => "log-level",
             Self::LogOutput => "log-output",
+
+            Self::KeyAction => "key-action",
+            Self::KeySequence => "key-sequence",
         }
     }
 
-    /// # Safety
-    ///
-    /// This is safe if `tests::cli_flags_length_invariants` passes
-    const unsafe fn short_flags_max_len() -> usize {
-        1
+    const fn short_flags_max_len() -> usize {
+        let mut max = 0;
+        let mut i = 0;
+
+        while i < Self::VARIANTS.len() {
+            let len = Self::VARIANTS[i].short_flag().len_utf8();
+            if len > max {
+                max = len;
+            }
+
+            i += 1;
+        }
+
+        max
     }
-    /// # Safety
-    ///
-    /// This is safe if `tests::cli_flags_length_invariants` passes
-    const unsafe fn long_flags_max_len() -> usize {
-        10
+    const fn long_flags_max_len() -> usize {
+        let mut max = 0;
+        let mut i = 0;
+
+        while i < Self::VARIANTS.len() {
+            let len = Self::VARIANTS[i].long_flag().len();
+            if len > max {
+                max = len;
+            }
+
+            i += 1;
+        }
+
+        max
     }
 
     /// Get the length of padding for lines.
     const fn padding_len() -> usize {
         // `  -`
         3
-            + unsafe { Self::short_flags_max_len() }
+            + Self::short_flags_max_len()
             // ` `
             + 1
             // `--`
             + 2
-            + unsafe { Self::long_flags_max_len() }
+            + Self::long_flags_max_len()
             // ` `
             + 1
     }
@@ -240,7 +310,32 @@ impl CliFlags {
                 "  - quiet   : Only show error messages.",
                 "  - verbose : Show all log messages.",
             ],
-            Self::LogOutput => &["Set which file to print logs.", "If unset, defaults to stderr."],
+            Self::LogOutput => &[
+                "Set which file to print logs.",
+                "If unset, defaults to stderr.",
+            ],
+            Self::KeyAction => &[
+                "Set the current key action that all new key bindings belong to.",
+                "Actions:",
+                "  - quit : End the window manager.",
+            ],
+            Self::KeySequence => &[
+                "A sequence of keys that executes the current key action",
+                "Syntax:",
+                "  - Most key sequences that can be represented using text simply use text.",
+                "    For example, in order to use the sequence `hello`, just type `-Khello`",
+                "  - Keys that cannot be printed, escape them in brackets and use their corresponding code.",
+                "    Codes:",
+                "      - F-{N} : Function key N, where N is a number. (E.g. <F-1> is the f1 key).",
+                "      - PG-UP : Page up.",
+                "      - PG-DN : Page down.",
+                "  - Modifier keys use the the modifier head followed by a dash. (E.g. C-f is control f)",
+                "    Heads:",
+                "      - C : Control.",
+                "      - L : Logo/super.",
+                "      - M : Alt.",
+                "      - S : Shift.",
+            ],
         }
     }
     /// Get the length of [Self::help] with padding and newlines.
@@ -288,12 +383,12 @@ impl CliFlags {
         string.push_str("  -");
         let flag = self.short_flag();
         string.push(flag);
-        pad(string, flag.len_utf8(), unsafe { Self::short_flags_max_len() });
+        pad(string, flag.len_utf8(), Self::short_flags_max_len());
 
         string.push_str(" --");
         let flag = self.long_flag();
         string.push_str(flag);
-        pad(string, flag.len(), unsafe { Self::long_flags_max_len() });
+        pad(string, flag.len(), Self::long_flags_max_len());
 
         string.push(' ');
 
@@ -325,11 +420,7 @@ impl CliFlags {
             Self::Help => {
                 const HEAD: &str = "usage: storm [OPTIONS..]\n\n";
                 const TAIL: &str = "";
-                const TEXT: ConstString::<{
-                    HEAD.len()
-                        + CliFlags::help_len_all()
-                        + TAIL.len()
-                }> = {
+                const TEXT: ConstString<{ HEAD.len() + CliFlags::help_len_all() + TAIL.len() }> = {
                     let mut text = ConstString::new();
                     text.push_str(HEAD);
                     CliFlags::write_help_all(&mut text);
@@ -340,15 +431,53 @@ impl CliFlags {
 
                 println!("{}", const { TEXT.as_str() });
                 Err(ApplyError::Exit)
-            },
+            }
             Self::Version => {
-                println!(
-                    "storm {}",
-                    VERSION,
-                );
+                println!("storm {}", VERSION,);
                 Err(ApplyError::Exit)
             }
-            _ => todo!(),
+            Self::LogLevel => {
+                let value = value()?;
+
+                match value.as_ref() {
+                    "none" => {
+                        config.log_level = LogLevel::None;
+                        Ok(())
+                    }
+                    "quiet" => {
+                        config.log_level = LogLevel::Quiet;
+                        Ok(())
+                    }
+                    "verbose" => {
+                        config.log_level = LogLevel::Verbose;
+                        Ok(())
+                    }
+                    _ => Err(ApplyError::UnknownLogLevel(value)),
+                }
+            }
+            Self::LogOutput => {
+                let value = value()?;
+                config.log_file = Some(RefCell::new(
+                    File::open(value.as_ref()).map_err(|err| ApplyError::FileOpen(value, err))?,
+                ));
+                Ok(())
+            }
+            Self::KeyAction => {
+                let value = value()?;
+
+                match value.as_ref() {
+                    "quit" => {
+                        config.key_action = Some(KeyAction::Quit);
+                        Ok(())
+                    },
+                    _ => Err(ApplyError::UnknownKeyAction(value)),
+                }
+            }
+            Self::KeySequence => {
+                let _value = value()?;
+
+                todo!("parse `value` & change Parser::parse to use `CopyStr`s")
+            }
         }
     }
 }
@@ -411,32 +540,5 @@ mod tests {
                 assert_eq!(CliFlags::SHORT.get(&short), Some(into));
                 assert_eq!(CliFlags::LONG.get(&long), Some(into));
             })
-    }
-
-    // these actually don't need to be tested since if invariants are violated, it would just create a compile time panic
-    #[test]
-    fn cli_flags_length_invariants() {
-        fn max_key_len<K, V, F>(map: phf::Map<K, V>, len_utf8: F) -> usize
-        where F: for<'a> FnMut(&'a K) -> usize {
-            assert!(!map.is_empty());
-
-            map
-                .keys()
-                .map(len_utf8)
-                .inspect(|len| assert!(*len != 0))
-                .max()
-                .unwrap_or(0)
-        }
-
-        assert_eq!(
-            max_key_len(CliFlags::SHORT, |ch| ch.len_utf8()),
-            // SAFETY: only used for comparison
-            unsafe { CliFlags::short_flags_max_len() }
-        );
-        assert_eq!(
-            max_key_len(CliFlags::LONG, |ch| ch.len()),
-            // SAFETY: only used for comparison
-            unsafe { CliFlags::long_flags_max_len() }
-        );
     }
 }

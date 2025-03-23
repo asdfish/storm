@@ -2,6 +2,7 @@
 
 use std::{
     borrow::Cow,
+    fmt::{self, Display, Formatter},
     ops::{Bound, Deref, Range, RangeBounds},
     rc::Rc,
 };
@@ -114,6 +115,11 @@ impl<'a> CopyStr<'a> {
         self.bounds.end = split;
 
         out
+    }
+}
+impl Display for CopyStr<'_> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.as_ref())
     }
 }
 impl PartialEq for CopyStr<'_> {

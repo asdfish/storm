@@ -1,6 +1,9 @@
 use {
     crate::{str::copy_str::CopyStr, recursion::Recursion},
-    std::mem::replace,
+    std::{
+        fmt::{self, Display, Formatter},
+        mem::replace,
+    },
 };
 
 #[derive(Clone, Debug, PartialEq)]
@@ -168,6 +171,14 @@ pub enum Flag<'a> {
     Long(CopyStr<'a>),
     /// Arguments that start with `-`
     Short(char),
+}
+impl Display for Flag<'_> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Long(flag) => write!(f, "--{}", flag),
+            Self::Short(flag) => write!(f, "-{}", flag),
+        }
+    }
 }
 #[derive(Clone, Copy, Debug, PartialEq)]
 /// [Flag] without its contents
