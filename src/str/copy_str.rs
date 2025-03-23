@@ -30,7 +30,7 @@ impl<'a> CopyStr<'a> {
         ]
             .into_iter()
             .any(|i| !self.buffer.is_char_boundary(i)) {
-                return None;
+                None
             } else {
                 Some(Self {
                     buffer: self.buffer.clone(),
@@ -159,8 +159,8 @@ enum CopyStrBuffer<'a> {
 impl AsRef<str> for CopyStrBuffer<'_> {
     fn as_ref(&self) -> &str {
         match self {
-            Self::Rc(rc) => &rc,
-            Self::Ref(str) => &str,
+            Self::Rc(rc) => rc,
+            Self::Ref(str) => str,
         }
     }
 }

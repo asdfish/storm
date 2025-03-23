@@ -5,11 +5,11 @@ edition = "2024"
 license-file = "LICENSE"
 
 [dependencies]
-contracts = "0.6.3"
 enum-map = "2.7.3"
 oneshot = "0.1.11"
+phf = { version = "0.11.3", features = ["macros"] }
 smallvec = "1.14.0"
-unicode-ident = "1.0.18"
+strum = { version = "0.26.3", default-features = false, features = ["derive"] }
 
 [target.'cfg(windows)'.dependencies]
 parking_lot = "0.12.3"

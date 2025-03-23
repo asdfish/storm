@@ -1,15 +1,10 @@
 #![cfg_attr(not(test), no_main)]
 
-pub mod backend;
-pub mod bomb;
-pub mod config;
-pub mod copy_str;
-pub mod error;
-pub mod recursion;
-pub mod state;
-
 use {
-    config::Config,
+    storm::{
+        *,
+        config::Config,
+    },
     std::{
         env,
         ffi::{c_char, c_int},

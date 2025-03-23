@@ -1,234 +1,186 @@
-use std::fmt::{self, Display, Formatter};
+use {
+    crate::{str::copy_str::CopyStr, recursion::Recursion},
+    std::mem::replace,
+};
 
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub enum Flag<'arg> {
-    Separator,
-    Value,
-    Short(char),
-    Long(&'arg str),
+#[derive(Clone, Debug, PartialEq)]
+pub struct Arg<'a> {
+    last_flag_kind: Option<FlagKind>,
+    next: CopyStr<'a>,
 }
-impl Display for Flag<'_> {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::Short(flag) => write!(f, "-{}", flag),
-            Self::Long(flag) => write!(f, "--{}", flag),
-            _ => Ok(()),
-        }
+impl<'a> Arg<'a> {
+    fn value(mut self) -> Option<CopyStr<'a>> {
+        self.last_flag_kind.and_then(|_| {
+            let offset = match self.next.as_ref().chars().next()? {
+                '=' => 1,
+                _ => 0,
+            };
+
+            self.next.cut_at(offset);
+            Some(self.next)
+        })
     }
 }
-#[derive(Clone, Copy, Debug, PartialEq)]
-/// The private representation of flags with extra metadata.
-struct FlagInner<'arg> {
-    kind: Flag<'arg>,
-    value: &'arg str,
-}
+impl<'a> Iterator for Arg<'a> {
+    type Item = Result<Flag<'a>, ArgError>;
 
-impl<'arg> FlagInner<'arg> {
-    fn new<S: AsRef<str> + ?Sized + 'arg>(arg: &'arg S) -> (Self, &'arg str) {
-        let arg = arg.as_ref();
+    fn next(&mut self) -> Option<Result<Flag<'a>, ArgError>> {
+        match self.last_flag_kind {
+            Some(FlagKind::Long) => None,
+            Some(FlagKind::Short) => match self.next.as_ref().chars().next()? {
+                '=' => None,
+                ch => {
+                    self.next.cut_at(ch.len_utf8());
 
-        if arg == "--" {
-            (
-                FlagInner {
-                    kind: Flag::Separator,
-                    value: "",
-                },
-                "",
-            )
-        } else if let Some(next) = arg.strip_prefix("--") {
-            let (identifier, value) = next
-                .char_indices()
-                .find(|(_, ch)| *ch == '=')
-                .and_then(|(i, _)| Some((&next[..i], &next[i.checked_add(1)?..])))
-                .unwrap_or((next, ""));
+                    Some(Ok(Flag::Short(ch)))
+                }
+            },
+            None => match self.next.as_ref().as_bytes() {
+                [b'-', b'-'] => Some(Err(ArgError::Separator)),
+                [b'-', b'-', ..] => {
+                    self.next.cut_at(2);
+                    self.last_flag_kind = Some(FlagKind::Long);
 
-            (
-                FlagInner {
-                    kind: Flag::Long(identifier),
-                    value,
-                },
-                next,
-            )
-        } else if arg.starts_with('-') && arg.len() >= 2 {
-            let mut arg = arg.chars();
-            arg.next();
+                    if let Some((split, _)) =
+                        self.next.as_ref().char_indices().find(|(_, ch)| *ch == '=')
+                    {
+                        let next = self.next.split_off(split);
 
-            (
-                FlagInner {
-                    kind: Flag::Short(arg.next().expect(
-                        "internal error: the check above should ensure that there is always more at least 2 characters",
-                    )),
-                    value: arg.as_str(),
-                },
-                arg.as_str(),
-            )
-        } else {
-            (
-                FlagInner {
-                    kind: Flag::Value,
-                    value: arg,
-                },
-                arg,
-            )
-        }
-    }
-
-    fn value(&self) -> Option<&'arg str> {
-        let value: Option<&'arg str> = match self.kind {
-            Flag::Separator => None,
-            Flag::Value | Flag::Long(_) => Some(self.value),
-            Flag::Short(_) => self
-                .value
-                .get(if self.value.starts_with('=') { 1 } else { 0 }..),
-        };
-
-        value.filter(|value| !value.is_empty())
-    }
-}
-/// A single string in argv.
-///
-/// The shell command 'ls -l -s -h' contains the flags 'ls', '-l', '-s' and '-h'
-#[derive(Clone, Copy, Debug)]
-struct Argument<'arg> {
-    last: Option<FlagInner<'arg>>,
-    text: &'arg str,
-}
-impl<'arg> Argument<'arg> {
-    pub fn new<S: AsRef<str> + ?Sized + 'arg>(text: &'arg S) -> Self {
-        Self {
-            last: None,
-            text: text.as_ref(),
-        }
-    }
-}
-impl<'arg> Iterator for Argument<'arg> {
-    type Item = FlagInner<'arg>;
-
-    fn next(&mut self) -> Option<FlagInner<'arg>> {
-        if self.text.is_empty() {
-            return None;
-        }
-
-        match self.last {
-            Some(FlagInner {
-                kind: Flag::Separator | Flag::Long(_) | Flag::Value,
-                ..
-            }) => None,
-            Some(FlagInner {
-                kind: Flag::Short(_),
-                ..
-            }) => {
-                match self
-                    .text
-                    .chars()
-                    .next()
-                    .expect("internal error: empty strings are checked above")
-                {
-                    '=' => None,
-                    ch => {
-                        self.text = &self.text[ch.len_utf8()..];
-                        self.last = Some(FlagInner {
-                            kind: Flag::Short(ch),
-                            value: self.text,
-                        });
-
-                        self.last
+                        Some(Ok(Flag::Long(replace(&mut self.next, next))))
+                    } else {
+                        Some(Ok(Flag::Long(replace(&mut self.next, CopyStr::from("")))))
                     }
                 }
-            }
-            None => {
-                let (arg, next) = FlagInner::new(self.text);
+                // Having 1 ascii character and 1 random byte would make it always have a full char.
+                // Also not ub since this is never read.
+                [b'-', _, ..] => {
+                    self.next.cut_at(1);
 
-                self.last = Some(arg);
-                self.text = next;
+                    let flag = self.next.as_ref().chars().next().unwrap();
+                    self.next.cut_at(flag.len_utf8());
 
-                Some(arg)
-            }
+                    self.last_flag_kind = Some(FlagKind::Short);
+                    Some(Ok(Flag::Short(flag)))
+                }
+                [] => None,
+                _ => Some(Err(ArgError::Value)),
+            },
         }
     }
 }
-
-/// Parser for arguments.
-///
-/// # Examples
-///
-/// ```
-/// # use storm::config::opts::{Flag, Parser};
-///
-/// let mut parser = Parser::new(["ls", "-lsh", "foo"].iter());
-/// assert_eq!(parser.next(), Some(Flag::Value));
-/// assert_eq!(parser.next(), Some(Flag::Short('l')));
-/// assert_eq!(parser.next(), Some(Flag::Short('s')));
-/// assert_eq!(parser.next(), Some(Flag::Short('h')));
-/// assert_eq!(parser.value(Flag::Short('h')), Ok("foo"));
-/// ```
-#[derive(Debug)]
-pub struct Parser<'arg, I, S>
-where
-    I: Iterator<Item = &'arg S>,
-    S: AsRef<str> + ?Sized + 'arg,
-{
-    argv: I,
-    arg: Option<Argument<'arg>>,
-}
-impl<'arg, I, S> Parser<'arg, I, S>
-where
-    I: Iterator<Item = &'arg S>,
-    S: AsRef<str> + ?Sized + 'arg,
-{
-    pub const fn new(argv: I) -> Self {
-        Self { argv, arg: None }
-    }
-}
-impl<'arg, I, S> Parser<'arg, I, S>
-where
-    I: Iterator<Item = &'arg S>,
-    S: AsRef<str> + ?Sized + 'arg,
-{
-    pub fn value(&mut self, flag: Flag<'arg>) -> Result<&'arg str, NoValueError<'arg>> {
-        self.arg
-            .and_then(|arg| arg.last)
-            .and_then(|flag| flag.value())
-            .inspect(|_| self.arg = None)
-            .or_else(|| {
-                self.advance().and_then(|flag| match flag.kind {
-                    Flag::Value => Some(flag.value),
-                    _ => None,
-                })
-            })
-            .ok_or(NoValueError(flag))
-    }
-
-    fn advance(&mut self) -> Option<FlagInner<'arg>> {
-        self.arg
-            .insert(Argument::new(self.argv.next()?))
-            .next()
-            .or_else(|| self.advance())
-    }
-}
-impl<'arg, I, S> Iterator for Parser<'arg, I, S>
-where
-    I: Iterator<Item = &'arg S>,
-    S: AsRef<str> + ?Sized + 'arg,
-{
-    type Item = Flag<'arg>;
-
-    fn next(&mut self) -> Option<Flag<'arg>> {
-        match &mut self.arg {
-            Some(flag) => flag
-                .next()
-                .map(|flag| flag.kind)
-                .or_else(|| self.advance().map(|flag| flag.kind)),
-            None => self.advance().map(|flag| flag.kind),
+impl<'a> From<CopyStr<'a>> for Arg<'a> {
+    fn from(str: CopyStr<'a>) -> Self {
+        Self {
+            last_flag_kind: None,
+            next: str,
         }
     }
 }
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum ArgError {
+    Separator,
+    Value,
+}
 
-#[derive(Debug, PartialEq)]
-pub struct NoValueError<'a>(Flag<'a>);
-impl Display for NoValueError<'_> {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(f, "flag `{}` is missing an argument", self.0)
+pub struct Argv<'a, I>
+where
+    I: Iterator<Item = CopyStr<'a>>,
+{
+    iter: I,
+    last: Option<Arg<'a>>,
+    passed_separator: bool,
+}
+impl<'a, I, O> From<I> for Argv<'a, O>
+where
+    I: IntoIterator<Item = CopyStr<'a>, IntoIter = O>,
+    O: Iterator<Item = CopyStr<'a>>,
+{
+    fn from(iter: I) -> Self {
+        Self {
+            iter: iter.into_iter(),
+            last: None,
+            passed_separator: false,
+        }
+    }
+}
+impl<'a, I> Argv<'a, I>
+where
+    I: Iterator<Item = CopyStr<'a>>,
+{
+    /// Returns none if there are no more arguments.
+    fn last_or_next(&mut self) -> Option<&mut Arg<'a>> {
+        if self.last.is_none() {
+            Some(self.last.insert(self.iter.next().map(Arg::from)?))
+        } else {
+            self.last.as_mut()
+        }
+    }
+
+    /// Get a value if it exists.
+    pub fn value(&mut self) -> Option<CopyStr<'a>> {
+        self.last.take().and_then(Arg::value).or_else(|| {
+            let value = self.iter.next()?;
+
+            if let Err(ArgError::Value) = Arg::from(CopyStr::from(value.as_ref())).next()? {
+                Some(value)
+            } else {
+                self.last = Some(Arg::from(value));
+                None
+            }
+        })
+    }
+}
+impl<'a, I> Iterator for Argv<'a, I>
+where
+    I: Iterator<Item = CopyStr<'a>>,
+{
+    type Item = Flag<'a>;
+
+    fn next(&mut self) -> Option<Flag<'a>> {
+        Recursion::start(self, |s| {
+            if s.passed_separator {
+                return Recursion::End(None);
+            }
+
+            let arg = match s.last_or_next() {
+                Some(arg) => arg,
+                None => return Recursion::End(None),
+            };
+
+            match arg.next().transpose() {
+                Ok(flag @ Some(_)) => Recursion::End(flag),
+                Ok(None) | Err(ArgError::Value) => {
+                    s.last = None;
+                    Recursion::Continue(s)
+                }
+                Err(ArgError::Separator) => {
+                    s.passed_separator = true;
+                    Recursion::End(None)
+                }
+            }
+        })
+    }
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum Flag<'a> {
+    /// Arguments that start with `--`
+    Long(CopyStr<'a>),
+    /// Arguments that start with `-`
+    Short(char),
+}
+#[derive(Clone, Copy, Debug, PartialEq)]
+/// [Flag] without its contents
+enum FlagKind {
+    Long,
+    Short,
+}
+impl<'a> From<&Flag<'a>> for FlagKind {
+    fn from(flag: &Flag<'a>) -> Self {
+        match flag {
+            Flag::Long(_) => Self::Long,
+            Flag::Short(_) => Self::Short,
+        }
     }
 }
 
@@ -237,123 +189,159 @@ mod tests {
     use super::*;
 
     #[test]
-    fn flags() {
-        let mut flag = Argument::new("-Syuu");
-        assert_eq!(
-            flag.next(),
-            Some(FlagInner {
-                kind: Flag::Short('S'),
-                value: "yuu"
-            })
-        );
-        assert_eq!(
-            flag.next(),
-            Some(FlagInner {
-                kind: Flag::Short('y'),
-                value: "uu"
-            })
-        );
-        assert_eq!(
-            flag.next(),
-            Some(FlagInner {
-                kind: Flag::Short('u'),
-                value: "u"
-            })
-        );
-        assert_eq!(
-            flag.next(),
-            Some(FlagInner {
-                kind: Flag::Short('u'),
-                value: ""
-            })
-        );
-        assert_eq!(flag.next(), None);
+    fn flag_inner_init() {
+        [
+            (
+                "--foo=bar",
+                Some(Ok(Flag::Long("foo".into()))),
+                Some(Arg {
+                    last_flag_kind: Some(FlagKind::Long),
+                    next: "=bar".into(),
+                }),
+            ),
+            (
+                "-foo=bar",
+                Some(Ok(Flag::Short('f'))),
+                Some(Arg {
+                    last_flag_kind: Some(FlagKind::Short),
+                    next: "oo=bar".into(),
+                }),
+            ),
+            ("", None, None),
+            ("--", Some(Err(ArgError::Separator)), None),
+            ("-", Some(Err(ArgError::Value)), None),
+            ("foo bar", Some(Err(ArgError::Value)), None),
+        ]
+        .into_iter()
+        .for_each(|(input, output, next_state)| {
+            let mut flag = Arg::from(CopyStr::from(input));
+            assert_eq!(flag.next(), output);
 
-        let mut flag = Argument::new("-W=foo");
-        assert_eq!(
-            flag.next(),
-            Some(FlagInner {
-                kind: Flag::Short('W'),
-                value: "=foo"
-            })
-        );
-        assert_eq!(flag.next(), None);
+            if let Some(next_state) = next_state {
+                assert_eq!(flag, next_state);
+            }
+        });
+    }
+    #[test]
+    fn flag_inner_collect() {
+        [
+            (
+                "-foobar",
+                &[
+                    Flag::Short('f'),
+                    Flag::Short('o'),
+                    Flag::Short('o'),
+                    Flag::Short('b'),
+                    Flag::Short('a'),
+                    Flag::Short('r'),
+                ] as &[_],
+            ),
+            (
+                "-foo=bar",
+                &[Flag::Short('f'), Flag::Short('o'), Flag::Short('o')],
+            ),
+            ("--foo=bar", &[Flag::Long("foo".into())]),
+            ("--foo", &[Flag::Long("foo".into())]),
+        ]
+        .into_iter()
+        .for_each(|(input, expected)| {
+            assert_eq!(
+                Arg::from(CopyStr::from(input))
+                    .collect::<Result<Vec<_>, _>>()
+                    .unwrap()
+                    .as_slice(),
+                expected
+            );
+        });
+    }
+    #[test]
+    fn flag_inner_values() {
+        [
+            ("--foo=bar", 1, "bar"),
+            ("-Wall", 1, "all"),
+            ("-W=all", 1, "all"),
+            ("-Syuu=foo", 4, "foo"),
+        ]
+        .into_iter()
+        .for_each(|(input, nth, value)| {
+            let mut arg = Arg::from(CopyStr::from(input));
+            (0..nth).map(|_| arg.next()).for_each(drop);
 
-        let mut flag = Argument::new("--help");
-        assert_eq!(
-            flag.next(),
-            Some(FlagInner {
-                kind: Flag::Long("help"),
-                value: ""
-            })
-        );
-        assert_eq!(flag.next(), None);
-
-        let mut flag = Argument::new("--help=foo");
-        assert_eq!(
-            flag.next(),
-            Some(FlagInner {
-                kind: Flag::Long("help"),
-                value: "foo"
-            })
-        );
-        assert_eq!(flag.next(), None);
-
-        let mut flag = Argument::new("help");
-        assert_eq!(
-            flag.next(),
-            Some(FlagInner {
-                kind: Flag::Value,
-                value: "help"
-            })
-        );
-        assert_eq!(flag.next(), None);
-
-        let mut flag = Argument::new("--");
-        assert_eq!(
-            flag.next(),
-            Some(FlagInner {
-                kind: Flag::Separator,
-                value: ""
-            })
-        );
-        assert_eq!(flag.next(), None);
+            assert_eq!(arg.value(), Some(CopyStr::from(value)));
+        })
     }
 
     #[test]
-    fn argument() {
-        assert_eq!(
-            Argument::new("-Wall").next().and_then(|arg| arg.value()),
-            Some("all")
-        );
-        assert_eq!(Argument::new("-W").next().and_then(|arg| arg.value()), None);
-
-        assert_eq!(
-            Argument::new("-W=all").next().and_then(|arg| arg.value()),
-            Some("all")
-        );
-        assert_eq!(
-            Argument::new("-W=").next().and_then(|arg| arg.value()),
-            None
-        );
-
-        assert_eq!(
-            Argument::new("--foo=bar")
-                .next()
-                .and_then(|arg| arg.value()),
-            Some("bar")
-        );
-        assert_eq!(
-            Argument::new("--foo=").next().and_then(|arg| arg.value()),
-            None
-        );
+    fn argv_collect() {
+        [
+            (
+                &["--foo", "-lsh"] as &[_],
+                &[
+                    Flag::Long("foo".into()),
+                    Flag::Short('l'),
+                    Flag::Short('s'),
+                    Flag::Short('h'),
+                ] as &[_],
+            ),
+            (
+                &["--foo", "-Syuu", "--", "-Wall"],
+                &[
+                    Flag::Long("foo".into()),
+                    Flag::Short('S'),
+                    Flag::Short('y'),
+                    Flag::Short('u'),
+                    Flag::Short('u'),
+                ],
+            ),
+        ]
+        .into_iter()
+        .for_each(|(argv, expected)| {
+            assert_eq!(
+                Argv::from(argv.iter().copied().map(CopyStr::from))
+                    .collect::<Vec<_>>()
+                    .as_slice(),
+                expected,
+            )
+        })
     }
-
     #[test]
-    fn top_level() {
-        let mut parser = Parser::new(["-ctest"].into_iter());
-        assert_eq!(parser.next(), Some(Flag::Short('c')));
-        assert_eq!(parser.value(Flag::Short('c')), Ok("test"));
-        assert_eq!(parser.next(), None);
+    fn argv_value() {
+        [
+            (
+                &["--foo", "bar", "-lsh"] as &[_],
+                1,
+                "bar",
+                &[
+                    Flag::Short('l'),
+                    Flag::Short('s'),
+                    Flag::Short('h'),
+                ] as &[_],
+            ),
+            (
+                &["--foo=bar", "-lsh"] as &[_],
+                1,
+                "bar",
+                &[
+                    Flag::Short('l'),
+                    Flag::Short('s'),
+                    Flag::Short('h'),
+                ],
+            ),
+            (
+                &["--foo=bar", "-lsh"] as &[_],
+                2,
+                "sh",
+                &[],
+            ),
+        ]
+            .into_iter()
+            .for_each(|(input, nth, expected_value, expected_collect)| {
+                let mut argv = Argv::from(input.iter().copied().map(CopyStr::from));
+                (0..nth)
+                    .map(|_| argv.next())
+                    .for_each(drop);
+                assert_eq!(argv.value(), Some(CopyStr::from(expected_value)));
+                assert_eq!(argv.collect::<Vec<_>>().as_slice(), expected_collect);
+            })
     }
 }
