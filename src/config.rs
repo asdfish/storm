@@ -1,5 +1,6 @@
 pub mod key;
 pub mod opts;
+pub mod opts2;
 
 use {
     enum_map::EnumMap,
