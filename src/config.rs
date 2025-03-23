@@ -11,10 +11,10 @@ use {
     std::{
         cell::{RefCell, RefMut},
         cmp::{Ordering, PartialOrd},
-        ffi::{c_char, c_int, CStr},
+        ffi::{CStr, c_char, c_int},
         fmt::{self, Display, Formatter},
         fs::File,
-        io::{self, stderr, Write},
+        io::{self, Write, stderr},
         num::TryFromIntError,
         ops::DerefMut,
     },
@@ -469,7 +469,7 @@ impl CliFlags {
                     "quit" => {
                         config.key_action = Some(KeyAction::Quit);
                         Ok(())
-                    },
+                    }
                     _ => Err(ApplyError::UnknownKeyAction(value)),
                 }
             }
@@ -489,11 +489,13 @@ mod tests {
     #[test]
     fn flags_exist() {
         CliFlags::VARIANTS.iter().copied().for_each(|flag| {
-            assert!(CliFlags::SHORT
-                .values()
-                .chain(CliFlags::LONG.values())
-                .copied()
-                .any(|cli_flag| flag == cli_flag));
+            assert!(
+                CliFlags::SHORT
+                    .values()
+                    .chain(CliFlags::LONG.values())
+                    .copied()
+                    .any(|cli_flag| flag == cli_flag)
+            );
         })
     }
 

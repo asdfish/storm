@@ -1,5 +1,5 @@
 use {
-    crate::{str::copy_str::CopyStr, recursion::Recursion},
+    crate::{recursion::Recursion, str::copy_str::CopyStr},
     std::{
         fmt::{self, Display, Formatter},
         mem::replace,
@@ -322,37 +322,22 @@ mod tests {
                 &["--foo", "bar", "-lsh"] as &[_],
                 1,
                 "bar",
-                &[
-                    Flag::Short('l'),
-                    Flag::Short('s'),
-                    Flag::Short('h'),
-                ] as &[_],
+                &[Flag::Short('l'), Flag::Short('s'), Flag::Short('h')] as &[_],
             ),
             (
                 &["--foo=bar", "-lsh"] as &[_],
                 1,
                 "bar",
-                &[
-                    Flag::Short('l'),
-                    Flag::Short('s'),
-                    Flag::Short('h'),
-                ],
+                &[Flag::Short('l'), Flag::Short('s'), Flag::Short('h')],
             ),
-            (
-                &["--foo=bar", "-lsh"] as &[_],
-                2,
-                "sh",
-                &[],
-            ),
+            (&["--foo=bar", "-lsh"] as &[_], 2, "sh", &[]),
         ]
-            .into_iter()
-            .for_each(|(input, nth, expected_value, expected_collect)| {
-                let mut argv = Argv::from(input.iter().copied().map(CopyStr::from));
-                (0..nth)
-                    .map(|_| argv.next())
-                    .for_each(drop);
-                assert_eq!(argv.value(), Some(CopyStr::from(expected_value)));
-                assert_eq!(argv.collect::<Vec<_>>().as_slice(), expected_collect);
-            })
+        .into_iter()
+        .for_each(|(input, nth, expected_value, expected_collect)| {
+            let mut argv = Argv::from(input.iter().copied().map(CopyStr::from));
+            (0..nth).map(|_| argv.next()).for_each(drop);
+            assert_eq!(argv.value(), Some(CopyStr::from(expected_value)));
+            assert_eq!(argv.collect::<Vec<_>>().as_slice(), expected_collect);
+        })
     }
 }

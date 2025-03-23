@@ -14,7 +14,9 @@ pub struct CopyStr<'a> {
 }
 impl<'a> CopyStr<'a> {
     pub fn get<R>(&self, range: R) -> Option<Self>
-    where R: RangeBounds<usize> {
+    where
+        R: RangeBounds<usize>,
+    {
         let start = match range.start_bound() {
             Bound::Included(from) => *from,
             _ => 0,
@@ -25,19 +27,17 @@ impl<'a> CopyStr<'a> {
             Bound::Unbounded => self.bounds.end,
         };
 
-        if [
-            start,
-            end,
-        ]
+        if [start, end]
             .into_iter()
-            .any(|i| !self.buffer.is_char_boundary(i)) {
-                None
-            } else {
-                Some(Self {
-                    buffer: self.buffer.clone(),
-                    bounds: start..end,
-                })
-            }
+            .any(|i| !self.buffer.is_char_boundary(i))
+        {
+            None
+        } else {
+            Some(Self {
+                buffer: self.buffer.clone(),
+                bounds: start..end,
+            })
+        }
     }
 
     /// # Safety
@@ -98,7 +98,7 @@ impl<'a> CopyStr<'a> {
                     end: self.bounds.end,
                 },
             },
-        )       
+        )
     }
 
     pub fn split_off(&mut self, at: usize) -> Self {
@@ -110,7 +110,7 @@ impl<'a> CopyStr<'a> {
             bounds: Range {
                 start: split,
                 end: self.bounds.end,
-            }
+            },
         };
         self.bounds.end = split;
 
@@ -198,7 +198,10 @@ mod tests {
     #[test]
     fn copy_str_from() {
         assert_eq!(CopyStr::from("foo").as_ref(), "foo");
-        assert_eq!(CopyStr::from(Cow::Owned(String::from("foo"))).as_ref(), "foo");
+        assert_eq!(
+            CopyStr::from(Cow::Owned(String::from("foo"))).as_ref(),
+            "foo"
+        );
         assert_eq!(CopyStr::from(Rc::from("foo")).as_ref(), "foo");
     }
 

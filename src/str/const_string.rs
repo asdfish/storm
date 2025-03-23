@@ -1,6 +1,10 @@
 //! Owned string that can be modified in const contexts
 
-use std::{slice, str, fmt::{self, Debug, Display, Formatter}, ops::{Deref, DerefMut}};
+use std::{
+    fmt::{self, Debug, Display, Formatter},
+    ops::{Deref, DerefMut},
+    slice, str,
+};
 
 #[derive(Clone, Copy)]
 /// Owned string that can be modified in const contexts
@@ -36,9 +40,7 @@ impl<const N: usize> ConstString<N> {
     /// assert_eq!(b"hello", string.as_bytes());
     /// ```
     pub const fn as_bytes(&self) -> &[u8] {
-        unsafe {
-            slice::from_raw_parts(self.buf.as_ptr(), self.len)
-        }
+        unsafe { slice::from_raw_parts(self.buf.as_ptr(), self.len) }
     }
     /// Return a mutable refernce to the inner buffer.
     ///
@@ -56,9 +58,7 @@ impl<const N: usize> ConstString<N> {
     /// assert_eq!(string, "olleh");
     /// ```
     pub const unsafe fn as_mut_bytes(&mut self) -> &mut [u8] {
-        unsafe {
-            slice::from_raw_parts_mut(self.buf.as_mut_ptr(), self.len)
-        }
+        unsafe { slice::from_raw_parts_mut(self.buf.as_mut_ptr(), self.len) }
     }
     /// Returns the buffer as a string slice\
     ///
@@ -72,11 +72,7 @@ impl<const N: usize> ConstString<N> {
     /// ```
     pub const fn as_str(&self) -> &str {
         // SAFETY: these should be safe if the invariants are all true
-        unsafe {
-            str::from_utf8_unchecked(
-                self.as_bytes()
-            ) 
-        }
+        unsafe { str::from_utf8_unchecked(self.as_bytes()) }
     }
     /// # Examples
     ///
@@ -85,9 +81,9 @@ impl<const N: usize> ConstString<N> {
     /// let mut s = ConstString::<6>::new();
     /// s.push_str("foobar");
     /// let s_mut_str = s.as_mut_str();
-    /// 
+    ///
     /// s_mut_str.make_ascii_uppercase();
-    /// 
+    ///
     /// assert_eq!("FOOBAR", s_mut_str);
     /// ```
     pub const fn as_mut_str(&mut self) -> &mut str {
@@ -114,7 +110,7 @@ impl<const N: usize> ConstString<N> {
     /// let mut a = ConstString::<3>::new();
     /// a.push_str("foo");
     /// assert_eq!(a.len(), 3);
-    /// 
+    ///
     /// let mut b = ConstString::<4>::new();
     /// b.push_str("ƒoo");
     /// assert_eq!(b.len(), 4);
@@ -207,15 +203,11 @@ impl<const N: usize> ConstString<N> {
     /// ```
     pub const fn push(&mut self, ch: char) {
         // `ch.encode_utf8().len()` returns a valid utf8 length
-        self.len += ch.encode_utf8(
-            unsafe {
-                slice::from_raw_parts_mut(
-                    self.buf.as_mut_ptr()
-                        .add(self.len),
-                    N - self.len
-                )
-            }
-        ).len();
+        self.len += ch
+            .encode_utf8(unsafe {
+                slice::from_raw_parts_mut(self.buf.as_mut_ptr().add(self.len), N - self.len)
+            })
+            .len();
     }
 
     /// # Panics

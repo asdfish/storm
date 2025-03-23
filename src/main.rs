@@ -1,11 +1,11 @@
 #![cfg_attr(not(test), no_main)]
 
 use {
-    storm::config::{ApplyArgvError, ApplyError, Config},
     std::{
         env,
         ffi::{c_char, c_int},
     },
+    storm::config::{ApplyArgvError, ApplyError, Config},
 };
 
 // SAFETY: every c program has done this since the dawn of time
@@ -13,7 +13,7 @@ use {
 fn main(argc: c_int, argv: *const *const c_char) -> c_int {
     let mut config = Config::default();
     match unsafe { config.apply_argv(argc, argv) } {
-        Ok(_) => {},
+        Ok(_) => {}
         Err(ApplyArgvError::Apply(ApplyError::Exit)) => return 0,
         Err(err) => {
             eprintln!("error during argument parsing: {}", err);

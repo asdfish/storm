@@ -5,7 +5,9 @@ pub enum Recursion<T, E> {
 impl<T, E> Recursion<T, E> {
     #[inline]
     pub fn start<F>(with: T, mut operation: F) -> E
-    where F: FnMut(T) -> Self {
+    where
+        F: FnMut(T) -> Self,
+    {
         let mut last = with;
 
         loop {
