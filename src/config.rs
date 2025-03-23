@@ -231,16 +231,16 @@ impl CliFlags {
 
     const fn help(&self) -> &'static [&'static str] {
         match self {
-            Self::Help => &["print this message and exit"],
-            Self::Version => &["print version information and exit"],
+            Self::Help => &["Print this message and exit."],
+            Self::Version => &["Print version information and exit."],
             Self::LogLevel => &[
-                "change which log messages are shown",
+                "Change which log messages are shown.",
                 "Levels:",
-                "  - none    : disable all log messages",
-                "  - quiet   : only show error messages",
-                "  - verbose : show all log messages",
+                "  - none    : Disable all log messages.",
+                "  - quiet   : Only show error messages.",
+                "  - verbose : Show all log messages.",
             ],
-            Self::LogOutput => &["set which file to print logs", "defaults to stderr"],
+            Self::LogOutput => &["Set which file to print logs.", "If unset, defaults to stderr."],
         }
     }
     /// Get the length of [Self::help] with padding and newlines.
@@ -256,7 +256,7 @@ impl CliFlags {
 
         len
     }
-    /// Get the sum of all the lengths
+    /// Get the sum of all the help messages
     const fn help_len_all() -> usize {
         let mut sum = 0;
         let mut i = 0;
@@ -267,6 +267,8 @@ impl CliFlags {
 
         sum
     }
+
+    /// Write all help texts onto `buffer`
     const fn write_help_all<const N: usize>(buffer: &mut ConstString<N>) {
         let mut i = 0;
         while i < Self::VARIANTS.len() {
@@ -274,8 +276,7 @@ impl CliFlags {
             i += 1;
         }
     }
-
-    /// Write help onto `string`
+    /// Write `self`'s help message onto `string`
     const fn write_help<const N: usize>(&self, string: &mut ConstString<N>) {
         const fn pad<const N: usize>(string: &mut ConstString<N>, mut from: usize, to: usize) {
             while from < to {
@@ -322,7 +323,7 @@ impl CliFlags {
 
         match self {
             Self::Help => {
-                const HEAD: &str = "usage: storm [OPTIONS..]";
+                const HEAD: &str = "usage: storm [OPTIONS..]\n\n";
                 const TAIL: &str = "";
                 const TEXT: ConstString::<{
                     HEAD.len()
@@ -402,7 +403,18 @@ mod tests {
     }
 
     #[test]
+    fn cli_flags_serde() {
+        CliFlags::VARIANTS
+            .iter()
+            .map(|flag| (flag.short_flag(), flag.long_flag(), flag))
+            .for_each(|(short, long, into)| {
+                assert_eq!(CliFlags::SHORT.get(&short), Some(into));
+                assert_eq!(CliFlags::LONG.get(&long), Some(into));
+            })
+    }
+
     // these actually don't need to be tested since if invariants are violated, it would just create a compile time panic
+    #[test]
     fn cli_flags_length_invariants() {
         fn max_key_len<K, V, F>(map: phf::Map<K, V>, len_utf8: F) -> usize
         where F: for<'a> FnMut(&'a K) -> usize {
