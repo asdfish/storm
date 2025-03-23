@@ -1,11 +1,19 @@
 #![cfg_attr(not(test), no_main)]
 
+mod backend;
+mod bomb;
+mod config;
+mod error;
+mod recursion;
+mod state;
+mod str;
+
 use {
     std::{
         env,
         ffi::{c_char, c_int},
     },
-    storm::config::{ApplyArgvError, ApplyError, Config},
+    config::{ApplyArgvError, ApplyError, Config},
 };
 
 // SAFETY: every c program has done this since the dawn of time
@@ -28,10 +36,10 @@ fn main(argc: c_int, argv: *const *const c_char) -> c_int {
 
     #[cfg(windows)]
     {
-        storm::state::Storm::<
-            storm::backend::windows::WindowsBackendState,
-            storm::backend::windows::WindowsWindow,
-            storm::backend::windows::WindowsBackendError,
+        state::Storm::<
+            backend::windows::WindowsBackendState,
+            backend::windows::WindowsWindow,
+            backend::windows::WindowsBackendError,
         >::new(config)
         .unwrap()
         .run()
