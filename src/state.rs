@@ -4,7 +4,6 @@ use {
         config::{Config, key::KeyModifiers},
         error,
     },
-    oneshot,
     std::{
         collections::{HashMap, hash_map},
         fmt::Display,
