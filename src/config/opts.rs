@@ -3,7 +3,6 @@ use {
     std::{
         fmt::{self, Display, Formatter},
         marker::PhantomData,
-        mem::replace,
     },
 };
 
@@ -180,7 +179,7 @@ where
     }
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Flag<'a> {
     /// Arguments that start with `--`
     Long(&'a str),
@@ -212,7 +211,10 @@ impl<'a> From<&Flag<'a>> for FlagKind {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use {
+        super::*,
+        std::convert::Infallible,
+    };
 
     #[test]
     fn flag_inner_init() {
@@ -299,7 +301,7 @@ mod tests {
             (
                 &["--foo", "-lsh"] as &[_],
                 &[
-                    Flag::Long("foo".into()),
+                    Flag::Long("foo"),
                     Flag::Short('l'),
                     Flag::Short('s'),
                     Flag::Short('h'),
@@ -308,7 +310,7 @@ mod tests {
             (
                 &["--foo", "-Syuu", "--", "-Wall"],
                 &[
-                    Flag::Long("foo".into()),
+                    Flag::Long("foo"),
                     Flag::Short('S'),
                     Flag::Short('y'),
                     Flag::Short('u'),
@@ -318,9 +320,9 @@ mod tests {
         ]
         .into_iter()
         .for_each(|(argv, expected)| {
-            Argv::from(argv.iter().copied())
+            Argv::from(argv.iter().copied().map(Ok::<_, Infallible>))
                 .enumerate()
-                .for_each(|(i, flag)| assert_eq!(flag, expected[i]));
+                .for_each(|(i, flag)| assert_eq!(flag, Ok(expected[i])));
         })
     }
     #[test]
@@ -342,13 +344,13 @@ mod tests {
         ]
         .into_iter()
         .for_each(|(input, nth, expected_value, expected_flags)| {
-            let mut argv = Argv::from(input.iter().copied());
+            let mut argv = Argv::from(input.iter().copied().map(Ok::<_, Infallible>));
             (0..nth).map(|_| argv.next()).for_each(drop);
-            assert_eq!(argv.value(), Some(expected_value));
+            assert_eq!(argv.value(), Some(Ok(expected_value)));
 
             argv
                 .enumerate()
-                .for_each(|(i, flag)| assert_eq!(flag, expected_flags[i]));
+                .for_each(|(i, flag)| assert_eq!(flag, Ok(expected_flags[i])));
         })
     }
 }

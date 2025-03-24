@@ -9,7 +9,7 @@ mod recursion;
 mod state;
 
 use {
-    config::{ApplyArgvError, ApplyError, Config},
+    config::{ApplyError, Config},
     either::Either,
     std::{
         env,

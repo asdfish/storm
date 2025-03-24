@@ -426,7 +426,7 @@ impl CliFlags {
         I: Iterator<Item = Result<&'a str, E>>,
         E: Display,
     {
-        let value = move || match argv.value() {
+        let mut value = move || match argv.value() {
             Some(Ok(val)) => Ok(val),
             Some(Err(err)) => Err(ApplyError::ArgSource(err)),
             None => Err(ApplyError::MissingValue(flag))
@@ -455,7 +455,7 @@ impl CliFlags {
             Self::LogLevel => {
                 let value = value()?;
 
-                match value.as_ref() {
+                match value {
                     "none" => {
                         config.log_level = LogLevel::None;
                         Ok(())
@@ -481,7 +481,7 @@ impl CliFlags {
             Self::KeyAction => {
                 let value = value()?;
 
-                match value.as_ref() {
+                match value {
                     "quit" => {
                         config.key_action = Some(KeyAction::Quit);
                         Ok(())

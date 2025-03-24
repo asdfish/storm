@@ -1,5 +1,3 @@
-use crate::recursion::Recursion;
-
 #[derive(Clone, Copy, Debug)]
 pub struct FileParser<'a>(&'a str);
 impl<'a> FileParser<'a> {
@@ -19,9 +17,8 @@ impl<'a> Iterator for FileParser<'a> {
         let next = self.0
             .lines()
             .map(|line| line.trim())
-            .filter(|line| line.is_empty())
-            .filter(|line| line.chars().next() == Some('#'))
-            .next()?;
+            .filter(|line| !line.is_empty())
+            .find(|line| !line.starts_with('#'))?;
 
         // SAFETY: `self.0` and `next` point to the same string
         let position = unsafe { next.as_ptr().offset_from(self.0.as_ptr()) };
