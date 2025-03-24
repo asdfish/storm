@@ -260,13 +260,9 @@ mod tests {
         ]
         .into_iter()
         .for_each(|(input, expected)| {
-            assert_eq!(
-                Arg::from(input)
-                    .collect::<Result<Vec<_>, _>>()
-                    .unwrap()
-                    .as_slice(),
-                expected
-            );
+            Arg::from(input)
+                .enumerate()
+                .for_each(|(i, line)| assert_eq!(line.as_ref(), Ok(&expected[i])));
         });
     }
     #[test]
@@ -311,12 +307,9 @@ mod tests {
         ]
         .into_iter()
         .for_each(|(argv, expected)| {
-            assert_eq!(
-                Argv::from(argv.iter().copied())
-                    .collect::<Vec<_>>()
-                    .as_slice(),
-                expected,
-            )
+            Argv::from(argv.iter().copied())
+                .enumerate()
+                .for_each(|(i, flag)| assert_eq!(flag, expected[i]));
         })
     }
     #[test]
@@ -337,11 +330,14 @@ mod tests {
             (&["--foo=bar", "-lsh"] as &[_], 2, "sh", &[]),
         ]
         .into_iter()
-        .for_each(|(input, nth, expected_value, expected_collect)| {
+        .for_each(|(input, nth, expected_value, expected_flags)| {
             let mut argv = Argv::from(input.iter().copied());
             (0..nth).map(|_| argv.next()).for_each(drop);
             assert_eq!(argv.value(), Some(expected_value));
-            assert_eq!(argv.collect::<Vec<_>>().as_slice(), expected_collect);
+
+            argv
+                .enumerate()
+                .for_each(|(i, flag)| assert_eq!(flag, expected_flags[i]));
         })
     }
 }
