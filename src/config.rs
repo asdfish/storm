@@ -2,7 +2,7 @@ pub mod key;
 pub mod opts;
 
 use {
-    crate::str::{const_string::ConstString, copy_str::CopyStr},
+    crate::const_string::ConstString,
     enum_map::EnumMap,
     key::{KeyAction, KeySequence},
     opts::{Argv, Flag},
@@ -70,11 +70,11 @@ pub struct Config<'a> {
     key_action: Option<KeyAction>,
 }
 impl<'a> Config<'a> {
-    pub fn apply_args<I: IntoIterator<Item = S>, S: Into<CopyStr<'a>>>(
+    pub fn apply_args<I: IntoIterator<Item = &'a S>, S: AsRef<str> + ?Sized + 'a>(
         &mut self,
         args: I,
     ) -> Result<(), ApplyError<'a>> {
-        let mut parser = Argv::from(args.into_iter().map(<S as Into<CopyStr<'a>>>::into));
+        let mut parser = Argv::from(args.into_iter().map(|arg| arg.as_ref()));
         while let Some(flag) = parser.next() {
             let Some(cli_flag) = (match &flag {
                 Flag::Short(short) => CliFlags::SHORT.get(short),
@@ -179,11 +179,11 @@ impl Display for ApplyArgvError<'_> {
 #[derive(Debug)]
 pub enum ApplyError<'a> {
     Exit,
-    FileOpen(CopyStr<'a>, io::Error),
+    FileOpen(&'a str, io::Error),
     MissingValue(Flag<'a>),
-    UnknownLogLevel(CopyStr<'a>),
+    UnknownLogLevel(&'a str),
     UnknownFlag(Flag<'a>),
-    UnknownKeyAction(CopyStr<'a>),
+    UnknownKeyAction(&'a str),
 }
 impl Display for ApplyError<'_> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
@@ -412,7 +412,7 @@ impl CliFlags {
         argv: &mut Argv<'a, I>,
     ) -> Result<(), ApplyError<'a>>
     where
-        I: Iterator<Item = CopyStr<'a>>,
+        I: Iterator<Item = &'a str>,
     {
         let value = move || argv.value().ok_or(ApplyError::MissingValue(flag));
 
@@ -458,7 +458,7 @@ impl CliFlags {
             Self::LogOutput => {
                 let value = value()?;
                 config.log_file = Some(RefCell::new(
-                    File::open(value.as_ref()).map_err(|err| ApplyError::FileOpen(value, err))?,
+                    File::open(value).map_err(|err| ApplyError::FileOpen(value, err))?,
                 ));
                 Ok(())
             }

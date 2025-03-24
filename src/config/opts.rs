@@ -1,5 +1,5 @@
 use {
-    crate::{recursion::Recursion, str::copy_str::CopyStr},
+    crate::recursion::Recursion,
     std::{
         fmt::{self, Display, Formatter},
         mem::replace,
@@ -9,17 +9,17 @@ use {
 #[derive(Clone, Debug, PartialEq)]
 pub struct Arg<'a> {
     last_flag_kind: Option<FlagKind>,
-    next: CopyStr<'a>,
+    next: &'a str,
 }
 impl<'a> Arg<'a> {
-    fn value(mut self) -> Option<CopyStr<'a>> {
+    fn value(mut self) -> Option<&'a str> {
         self.last_flag_kind.and_then(|_| {
-            let offset = match self.next.as_ref().chars().next()? {
+            let offset = match self.next.chars().next()? {
                 '=' => 1,
                 _ => 0,
             };
 
-            self.next.cut_at(offset);
+            self.next = &self.next[offset..];
             Some(self.next)
         })
     }
@@ -30,37 +30,41 @@ impl<'a> Iterator for Arg<'a> {
     fn next(&mut self) -> Option<Result<Flag<'a>, ArgError>> {
         match self.last_flag_kind {
             Some(FlagKind::Long) => None,
-            Some(FlagKind::Short) => match self.next.as_ref().chars().next()? {
+            Some(FlagKind::Short) => match self.next.chars().next()? {
                 '=' => None,
                 ch => {
-                    self.next.cut_at(ch.len_utf8());
+                    self.next = &self.next[ch.len_utf8()..];
 
                     Some(Ok(Flag::Short(ch)))
                 }
             },
-            None => match self.next.as_ref().as_bytes() {
+            None => match self.next.as_bytes() {
                 [b'-', b'-'] => Some(Err(ArgError::Separator)),
                 [b'-', b'-', ..] => {
-                    self.next.cut_at(2);
+                    self.next = &self.next[2..];
                     self.last_flag_kind = Some(FlagKind::Long);
 
                     if let Some((split, _)) =
-                        self.next.as_ref().char_indices().find(|(_, ch)| *ch == '=')
+                        self.next.char_indices().find(|(_, ch)| *ch == '=')
                     {
-                        let next = self.next.split_off(split);
+                        let (flag, next) = self.next.split_at(split);
+                        self.next = next;
 
-                        Some(Ok(Flag::Long(replace(&mut self.next, next))))
+                        Some(Ok(Flag::Long(flag)))
                     } else {
-                        Some(Ok(Flag::Long(replace(&mut self.next, CopyStr::from("")))))
+                        let flag = Flag::Long(self.next);
+                        self.next = "";
+
+                        Some(Ok(flag))
                     }
                 }
                 // Having 1 ascii character and 1 random byte would make it always have a full char.
                 // Also not ub since this is never read.
                 [b'-', _, ..] => {
-                    self.next.cut_at(1);
+                    self.next = &self.next[1..];
 
-                    let flag = self.next.as_ref().chars().next().unwrap();
-                    self.next.cut_at(flag.len_utf8());
+                    let flag = self.next.chars().next().unwrap();
+                    self.next = &self.next[flag.len_utf8()..];
 
                     self.last_flag_kind = Some(FlagKind::Short);
                     Some(Ok(Flag::Short(flag)))
@@ -71,8 +75,8 @@ impl<'a> Iterator for Arg<'a> {
         }
     }
 }
-impl<'a> From<CopyStr<'a>> for Arg<'a> {
-    fn from(str: CopyStr<'a>) -> Self {
+impl<'a> From<&'a str> for Arg<'a> {
+    fn from(str: &'a str) -> Self {
         Self {
             last_flag_kind: None,
             next: str,
@@ -87,7 +91,7 @@ pub enum ArgError {
 
 pub struct Argv<'a, I>
 where
-    I: Iterator<Item = CopyStr<'a>>,
+    I: Iterator<Item = &'a str>,
 {
     iter: I,
     last: Option<Arg<'a>>,
@@ -95,8 +99,8 @@ where
 }
 impl<'a, I, O> From<I> for Argv<'a, O>
 where
-    I: IntoIterator<Item = CopyStr<'a>, IntoIter = O>,
-    O: Iterator<Item = CopyStr<'a>>,
+    I: IntoIterator<Item = &'a str, IntoIter = O>,
+    O: Iterator<Item = &'a str>,
 {
     fn from(iter: I) -> Self {
         Self {
@@ -108,7 +112,7 @@ where
 }
 impl<'a, I> Argv<'a, I>
 where
-    I: Iterator<Item = CopyStr<'a>>,
+    I: Iterator<Item = &'a str>,
 {
     /// Returns none if there are no more arguments.
     fn last_or_next(&mut self) -> Option<&mut Arg<'a>> {
@@ -120,11 +124,11 @@ where
     }
 
     /// Get a value if it exists.
-    pub fn value(&mut self) -> Option<CopyStr<'a>> {
+    pub fn value(&mut self) -> Option<&'a str> {
         self.last.take().and_then(Arg::value).or_else(|| {
             let value = self.iter.next()?;
 
-            if let Err(ArgError::Value) = Arg::from(CopyStr::from(value.as_ref())).next()? {
+            if let Err(ArgError::Value) = Arg::from(value).next()? {
                 Some(value)
             } else {
                 self.last = Some(Arg::from(value));
@@ -135,7 +139,7 @@ where
 }
 impl<'a, I> Iterator for Argv<'a, I>
 where
-    I: Iterator<Item = CopyStr<'a>>,
+    I: Iterator<Item = &'a str>,
 {
     type Item = Flag<'a>;
 
@@ -168,7 +172,7 @@ where
 #[derive(Clone, Debug, PartialEq)]
 pub enum Flag<'a> {
     /// Arguments that start with `--`
-    Long(CopyStr<'a>),
+    Long(&'a str),
     /// Arguments that start with `-`
     Short(char),
 }
@@ -204,7 +208,7 @@ mod tests {
         [
             (
                 "--foo=bar",
-                Some(Ok(Flag::Long("foo".into()))),
+                Some(Ok(Flag::Long("foo"))),
                 Some(Arg {
                     last_flag_kind: Some(FlagKind::Long),
                     next: "=bar".into(),
@@ -225,7 +229,7 @@ mod tests {
         ]
         .into_iter()
         .for_each(|(input, output, next_state)| {
-            let mut flag = Arg::from(CopyStr::from(input));
+            let mut flag = Arg::from(input);
             assert_eq!(flag.next(), output);
 
             if let Some(next_state) = next_state {
@@ -251,13 +255,13 @@ mod tests {
                 "-foo=bar",
                 &[Flag::Short('f'), Flag::Short('o'), Flag::Short('o')],
             ),
-            ("--foo=bar", &[Flag::Long("foo".into())]),
-            ("--foo", &[Flag::Long("foo".into())]),
+            ("--foo=bar", &[Flag::Long("foo")]),
+            ("--foo", &[Flag::Long("foo")]),
         ]
         .into_iter()
         .for_each(|(input, expected)| {
             assert_eq!(
-                Arg::from(CopyStr::from(input))
+                Arg::from(input)
                     .collect::<Result<Vec<_>, _>>()
                     .unwrap()
                     .as_slice(),
@@ -275,10 +279,10 @@ mod tests {
         ]
         .into_iter()
         .for_each(|(input, nth, value)| {
-            let mut arg = Arg::from(CopyStr::from(input));
+            let mut arg = Arg::from(input);
             (0..nth).map(|_| arg.next()).for_each(drop);
 
-            assert_eq!(arg.value(), Some(CopyStr::from(value)));
+            assert_eq!(arg.value(), Some(value));
         })
     }
 
@@ -308,7 +312,7 @@ mod tests {
         .into_iter()
         .for_each(|(argv, expected)| {
             assert_eq!(
-                Argv::from(argv.iter().copied().map(CopyStr::from))
+                Argv::from(argv.iter().copied())
                     .collect::<Vec<_>>()
                     .as_slice(),
                 expected,
@@ -334,9 +338,9 @@ mod tests {
         ]
         .into_iter()
         .for_each(|(input, nth, expected_value, expected_collect)| {
-            let mut argv = Argv::from(input.iter().copied().map(CopyStr::from));
+            let mut argv = Argv::from(input.iter().copied());
             (0..nth).map(|_| argv.next()).for_each(drop);
-            assert_eq!(argv.value(), Some(CopyStr::from(expected_value)));
+            assert_eq!(argv.value(), Some(expected_value));
             assert_eq!(argv.collect::<Vec<_>>().as_slice(), expected_collect);
         })
     }

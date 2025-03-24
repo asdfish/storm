@@ -3,10 +3,10 @@
 mod backend;
 mod bomb;
 mod config;
+mod const_string;
 mod error;
 mod recursion;
 mod state;
-mod str;
 
 use {
     config::{ApplyArgvError, ApplyError, Config},
