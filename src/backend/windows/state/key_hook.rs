@@ -3,8 +3,7 @@ use {
     crate::{
         backend::windows::{WinapiError, WindowsBackendError},
         config::key::{InvisibleKey, Key, KeyKind, KeyModifier, KeyModifiers},
-        error,
-        state::Event,
+        state::{KeyIntercept, Event},
     },
     std::{borrow::Cow, num::NonZeroUsize, ptr::null_mut},
     widestring::ustr::U16Str,
@@ -115,7 +114,7 @@ pub unsafe extern "system" fn key_hook(
                 Ok(Some(key)) => {
                     send(Ok(Event::Key(tx, key)));
 
-                    if rx.recv().unwrap_or(false) {
+                    if matches!(rx.recv().unwrap_or_default(), KeyIntercept::Block) {
                         return 1;
                     }
                 }

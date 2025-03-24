@@ -65,7 +65,7 @@ pub struct Config<'a> {
     pub config_file: Option<&'a Path>,
     log_level: LogLevel,
     log_file: Option<File>,
-    key_bindings: EnumMap<KeyAction, SmallVec<[KeySequence<'a>; 2]>>,
+    pub key_bindings: EnumMap<KeyAction, SmallVec<[KeySequence<'a>; 2]>>,
 
     key_action: Option<KeyAction>,
 }

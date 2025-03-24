@@ -1,8 +1,14 @@
 use {
+    crate::{
+        backend::{self, Window},
+        iter_ext::IterExt,
+        state::Storm,
+    },
     enum_map::{Enum, EnumMap},
     smallvec::SmallVec,
     std::{
         borrow::Cow,
+        cmp::{Ordering, PartialOrd},
         fmt::{self, Display, Formatter},
         ops::Not,
         str,
@@ -33,6 +39,17 @@ impl Display for ParserError<'_> {
 #[derive(Clone, Copy, Debug, Enum)]
 pub enum KeyAction {
     Quit,
+}
+impl KeyAction {
+    pub fn execute<'a, S, W, E>(&self, state: &mut Storm<'a, S, W, E>)
+    where
+        E: Display,
+        S: backend::State<W, E>,
+        W: Window {
+            match self {
+                Self::Quit => state.quit = true,
+            }
+    }
 }
 
 #[derive(Debug, PartialEq)]
@@ -203,9 +220,11 @@ impl<'a> Parser<'a> for InvisibleKey {
     }
 }
 
+type KeySequenceInner<'a> = [Key<'a>; 4];
+
 #[derive(Debug, Default, PartialEq)]
 /// The keys *never* contain the same modifiers while being chained.
-pub struct KeySequence<'a>(SmallVec<[Key<'a>; 4]>);
+pub struct KeySequence<'a>(SmallVec<KeySequenceInner<'a>>);
 impl KeySequence<'_> {
     pub fn new() -> Self {
         Self(SmallVec::new())
@@ -221,6 +240,10 @@ impl KeySequence<'_> {
     /// Create `self` with `n` elements in advance
     pub fn with_capacity(cap: usize) -> Self {
         Self(SmallVec::with_capacity(cap))
+    }
+
+    pub fn clear(&mut self) {
+        self.0.clear();
     }
 
     pub fn len(&self) -> usize {
@@ -245,9 +268,21 @@ impl<'a> KeySequence<'a> {
         }
     }
 
+    pub fn iter(&self) -> impl Iterator<Item = &Key<'a>> {
+        self.0.iter()
+    }
+
     /// Whether or not `self` contains the key sequence described in other
     pub fn contains<'b>(&self, other: &KeySequence<'b>) -> bool {
         self.0.iter().zip(other.0.iter()).any(|(l, r)| l != r).not()
+    }
+}
+impl<'a> IntoIterator for KeySequence<'a> {
+    type Item = Key<'a>;
+    type IntoIter = smallvec::IntoIter<KeySequenceInner<'a>>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.0.into_iter()
     }
 }
 impl<'a> Extend<Key<'a>> for KeySequence<'a> {
@@ -291,6 +326,29 @@ impl<'a> Parser<'a> for KeySequence<'a> {
         }
 
         some.then_some(Ok((key_seq, input)))
+    }
+}
+impl PartialOrd for KeySequence<'_> {
+    /// Returns how much a sequence contains the other sequence.
+    ///  - [Ordering::Equal] indicates both are indentical.
+    ///  - [Ordering::Less] indicates the left is a subset of the right.
+    ///  - [Ordering::Greater] indicates the left is a superset of the right.
+    ///  - [None] indicates they do not match.
+    fn partial_cmp(&self, rhs: &KeySequence<'_>) -> Option<Ordering> {
+        self.iter()
+            .zip_all(rhs.iter())
+            .fold(Some(Ordering::Equal), |state, keys| {
+                if state != Some(Ordering::Equal) {
+                    return state;
+                }
+
+                match keys {
+                    (Some(_), None) => Some(Ordering::Greater),
+                    (None, Some(_)) => Some(Ordering::Less),
+                    (Some(l), Some(r)) if l == r => Some(Ordering::Equal),
+                    _ => None,
+                }
+            })
     }
 }
 
@@ -415,22 +473,121 @@ mod tests {
 
     #[test]
     fn key_sequence_contains() {
-        assert!(
-            KeySequence::from_iter([
-                Key {
-                    kind: "foo".into(),
-                    mods: KeyModifiers::from_fn(|_| false)
-                },
-                Key {
-                    kind: "bar".into(),
-                    mods: KeyModifiers::from_fn(|_| true)
-                },
-            ])
-            .contains(&KeySequence::from_iter([Key {
+        assert!(KeySequence::from_iter([
+            Key {
                 kind: "foo".into(),
                 mods: KeyModifiers::from_fn(|_| false)
-            }]))
-        );
+            },
+            Key {
+                kind: "bar".into(),
+                mods: KeyModifiers::from_fn(|_| true)
+            },
+        ])
+        .contains(&KeySequence::from_iter([Key {
+            kind: "foo".into(),
+            mods: KeyModifiers::from_fn(|_| false)
+        }])));
+    }
+    #[test]
+    fn key_sequence_partial_ord() {
+        [
+            (
+                [
+                    KeySequence::from_iter([
+                        Key {
+                            kind: "foo".into(),
+                            mods: KeyModifiers::from_fn(|_| false),
+                        },
+                        Key {
+                            kind: "bar".into(),
+                            mods: KeyModifiers::from_fn(|_| true),
+                        },
+                    ]),
+                    KeySequence::from_iter([
+                        Key {
+                            kind: "foo".into(),
+                            mods: KeyModifiers::from_fn(|_| false),
+                        }
+                    ])
+                ],
+                Some(Ordering::Greater),
+            ),
+            (
+                [
+                    KeySequence::from_iter([
+                        Key {
+                            kind: "foo".into(),
+                            mods: KeyModifiers::from_fn(|_| false),
+                        }
+                    ]),
+                    KeySequence::from_iter([
+                        Key {
+                            kind: "foo".into(),
+                            mods: KeyModifiers::from_fn(|_| false),
+                        },
+                        Key {
+                            kind: "bar".into(),
+                            mods: KeyModifiers::from_fn(|_| true),
+                        },
+                    ]),
+                ],
+                Some(Ordering::Less),
+            ),
+            (
+                [
+                    KeySequence::from_iter([
+                        Key {
+                            kind: "foo".into(),
+                            mods: KeyModifiers::from_fn(|_| false),
+                        },
+                        Key {
+                            kind: "bar".into(),
+                            mods: KeyModifiers::from_fn(|_| true),
+                        },
+                    ]),
+                    KeySequence::from_iter([
+                        Key {
+                            kind: "foo".into(),
+                            mods: KeyModifiers::from_fn(|_| false),
+                        },
+                        Key {
+                            kind: "bar".into(),
+                            mods: KeyModifiers::from_fn(|_| true),
+                        },
+                    ]),
+                ],
+                Some(Ordering::Equal),
+            ),
+            (
+                [
+                    KeySequence::from_iter([
+                        Key {
+                            kind: "foo".into(),
+                            mods: KeyModifiers::from_fn(|_| false),
+                        },
+                        Key {
+                            kind: "baz".into(),
+                            mods: KeyModifiers::from_fn(|_| true),
+                        },
+                    ]),
+                    KeySequence::from_iter([
+                        Key {
+                            kind: "foo".into(),
+                            mods: KeyModifiers::from_fn(|_| false),
+                        },
+                        Key {
+                            kind: "bar".into(),
+                            mods: KeyModifiers::from_fn(|_| true),
+                        },
+                    ]),
+                ],
+                None,
+            ),
+        ]
+            .into_iter()
+            .for_each(|([l, r], ordering)| {
+                assert_eq!(l.partial_cmp(&r), ordering);
+            });
     }
 
     #[test]

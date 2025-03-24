@@ -1,11 +1,14 @@
 use {
     crate::{
         backend::{self, Window},
-        config::{Config, key::{Key, KeySequence}},
-        error,
+        config::{
+            key::{Key, KeySequence},
+            Config,
+        },
     },
     std::{
-        collections::{HashMap, hash_map},
+        collections::{hash_map, HashMap},
+        cmp::Ordering,
         fmt::Display,
         marker::PhantomData,
         sync::mpsc,
@@ -20,7 +23,8 @@ where
     E: Display,
     S: backend::State<W, E>,
     W: Window,
-{    pub backend_state: S,
+{
+    pub backend_state: S,
     config: Config<'a>,
     rx: EventReceiver<W, E>,
     pub workspace: u8,
@@ -28,6 +32,8 @@ where
 
     max_key_binding_len: usize,
     pressed_keys: KeySequence<'a>,
+
+    pub quit: bool,
 
     _marker: PhantomData<E>,
 }
@@ -56,12 +62,14 @@ where
             max_key_binding_len,
             pressed_keys: KeySequence::with_capacity(max_key_binding_len),
 
+            quit: false,
+
             _marker: PhantomData,
         })
     }
 
     pub fn run(mut self) -> Result<(), E> {
-        loop {
+        while !self.quit {
             match self.rx.recv() {
                 Ok(event) => match event {
                     Ok(Event::AddWindow { workspace, window }) => {
@@ -79,7 +87,39 @@ where
                         }
                     }
                     Ok(Event::Key(consume, key)) => {
-                        let _ = consume.send(false);
+                        // a response should be sent asap to allow the thread to continue
+
+                        self.pressed_keys.push(key);
+                        if self.pressed_keys.len() > self.max_key_binding_len {
+                            let _ = consume.send(KeyIntercept::Allow);
+                            self.pressed_keys.clear();
+                            continue;
+                        }
+
+                        let mut lesser = false;
+                        if let Some(key_action) =
+                            self.config
+                                .key_bindings
+                                .iter()
+                                .flat_map(|(action, sequences)| {
+                                    sequences.iter().map(move |sequence| (action, sequence))
+                                })
+                                .map(|(action, sequence)| (action, self.pressed_keys.partial_cmp(sequence)))
+                                .inspect(|(_, ord)| if *ord == Some(Ordering::Less) {
+                                    lesser = true;
+                                })
+                                .find(|(_, ord)| *ord == Some(Ordering::Equal))
+                                .map(|(action, _)| action) {
+                                    let _ = consume.send(KeyIntercept::Allow);
+                                    self.pressed_keys.clear();
+
+                                    key_action.execute(&mut self);
+                                } else if lesser {
+                                    let _ = consume.send(KeyIntercept::Block);
+                                } else {
+                                    let _ = consume.send(KeyIntercept::Allow);
+                                    self.pressed_keys.clear();
+                                }
                     }
                     Err(e) => self
                         .config
@@ -88,20 +128,28 @@ where
                 Err(error) => {
                     self.config
                         .error(|f| writeln!(f, "all senders have disconnected: {}", error));
-                    break Ok(());
+                    break;
                 }
             }
             S::each_event(&mut self);
         }
+
+        Ok(())
     }
 }
 
-/// Events to be received in [Storm::run].
+/// Events to be received in [Storm::run], sent from the platform specific backend.
 pub enum Event<W: Window> {
     /// Add a window.
     AddWindow {
         workspace: u8,
         window: W,
     },
-    Key(oneshot::Sender<bool>, Key<'static>),
+    Key(oneshot::Sender<KeyIntercept>, Key<'static>),
+}
+#[derive(Clone, Copy, Debug, Default)]
+pub enum KeyIntercept {
+    #[default]
+    Allow,
+    Block,
 }

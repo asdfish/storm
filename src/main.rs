@@ -5,6 +5,7 @@ mod bomb;
 mod config;
 mod const_string;
 mod error;
+mod iter_ext;
 mod path_cache;
 mod recursion;
 mod state;
