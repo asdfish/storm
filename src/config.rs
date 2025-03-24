@@ -241,8 +241,8 @@ impl CliFlags {
         'l' => CliFlags::LogLevel,
         'o' => CliFlags::LogOutput,
 
-        'k' => CliFlags::KeyAction,
-        'K' => CliFlags::KeySequence,
+        'K' => CliFlags::KeyAction,
+        'k' => CliFlags::KeySequence,
     };
     const LONG: phf::Map<&str, CliFlags> = phf_map! {
         "help" => CliFlags::Help,
@@ -261,8 +261,8 @@ impl CliFlags {
             Self::LogLevel => 'l',
             Self::LogOutput => 'o',
 
-            Self::KeyAction => 'k',
-            Self::KeySequence => 'K',
+            Self::KeyAction => 'K',
+            Self::KeySequence => 'k',
         }
     }
     const fn long_flag(&self) -> &'static str {
@@ -349,7 +349,7 @@ impl CliFlags {
                 "A sequence of keys that executes the current key action",
                 "Syntax:",
                 "  - Most key sequences that can be represented using text simply use text.",
-                "    For example, in order to use the sequence `hello`, just type `-Khello`",
+                "    For example, in order to use the sequence `hello`, the argument would be `-khello`",
                 "  - Keys that cannot be printed, escape them in brackets and use their corresponding code.",
                 "    Codes:",
                 "      - F-{N} : Function key N, where N is a number. (E.g. <F-1> is the f1 key).",
@@ -539,7 +539,7 @@ mod tests {
     #[test]
     fn logging() {
         fn log_map<F: FnMut(LogLevel) -> bool>(log_level: LogLevel, mut expected: F) {
-            let config = Config {
+            let mut config = Config {
                 log_level,
                 ..Default::default()
             };
