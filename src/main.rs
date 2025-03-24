@@ -10,9 +10,13 @@ mod recursion;
 mod state;
 
 use {
-    config::{ApplyError, Config, file_parser::{self, FileParser}},
+    config::{
+        ApplyError, Config,
+        file_parser::{self, FileParser},
+    },
     either::Either,
     path_cache::PathCache,
+    path_cache::PathOrigin,
     std::{
         convert::Infallible,
         env,
@@ -40,18 +44,31 @@ fn main(argc: c_int, argv: *const *const c_char) -> c_int {
         }
     }
 
-    if let Some(config_file) = paths.get_config(&config)
-        .map(read_to_string)
-        .transpose()
-        .ok()
-        .flatten()
-        .map(|contents| file_parser::trim_string(&contents))
-        // the stuff in the config would need to stay alive for the lifetime of the program anyways
-        .map(Box::leak) {
-            if let Err(err) = config.apply_args(&paths, FileParser::new(config_file).map(Ok::<_, Infallible>)) {
+    if let Some((path, origin)) = paths.get_config(&config) {
+        'apply: {
+            let contents = match read_to_string(path).map_err(move |err| (err, origin)) {
+                Ok(contents) => Box::leak(file_parser::trim_string(contents)),
+                Err((err, PathOrigin::Config)) => {
+                    config.error(|f| {
+                        writeln!(
+                            f,
+                            "failed to read configuration from path `{}`: {}",
+                            path.display(),
+                            err
+                        )
+                    });
+                    return 1;
+                }
+                Err((_, PathOrigin::Default)) => break 'apply, // ignore default
+            };
+
+            if let Err(err) =
+                config.apply_args(&paths, FileParser::new(contents).map(Ok::<_, Infallible>))
+            {
                 config.error(|f| writeln!(f, "error during argument parsing: {}", err));
             }
         }
+    }
 
     if cfg!(not(windows)) {
         config.error(|f| writeln!(f, "operating system `{}` is not supported", env::consts::OS));
@@ -73,7 +90,6 @@ fn main(argc: c_int, argv: *const *const c_char) -> c_int {
     0
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -85,7 +101,7 @@ mod tests {
                 if let Some(env) = option_env!($env) {
                     assert_eq!(env, $constant);
                 }
-            }
+            };
         }
 
         check_sync!(NAME, "CARGO_PKG_NAME");

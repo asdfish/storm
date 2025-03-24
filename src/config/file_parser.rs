@@ -1,8 +1,7 @@
-use std::borrow::Cow;
-
 /// Trim a string to make it use less memory
-pub fn trim_string<'a>(str: &'a str) -> Box<str> {
-    str.lines()
+pub fn trim_string<S: AsRef<str>>(str: S) -> Box<str> {
+    str.as_ref()
+        .lines()
         .map(|line| line.trim())
         .filter(|line| !line.is_empty() && !line.starts_with("#"))
         .flat_map(|line| [line, "\n"])
@@ -43,6 +42,13 @@ impl<'a> Iterator for FileParser<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn string_flatten() {
+        [["foo\n\nbar\n#baz\n    \nlorem", "foo\nbar\nlorem\n"]]
+            .into_iter()
+            .for_each(|[input, output]| assert_eq!(trim_string(&input).as_ref(), output));
+    }
 
     #[test]
     fn file_parser_iter() {

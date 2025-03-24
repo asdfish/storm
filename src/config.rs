@@ -3,7 +3,7 @@ pub mod key;
 pub mod opts;
 
 use {
-    crate::{const_string::ConstString, path_cache::PathCache, NAME, VERSION},
+    crate::{NAME, VERSION, const_string::ConstString, path_cache::PathCache},
     either::Either,
     enum_map::EnumMap,
     key::{KeyAction, KeySequence, Parser, ParserError},
@@ -141,11 +141,7 @@ impl<'a> Config<'a> {
         print: F,
     ) {
         match &mut self.log_file {
-            Some(file) => self.log_level.log(
-                level,
-                file,
-                print,
-            ),
+            Some(file) => self.log_level.log(level, file, print),
             None => self.log_level.log(level, &mut stderr(), print),
         }
     }
@@ -184,7 +180,7 @@ impl Display for ApplyArgvError {
 }
 
 #[derive(Debug)]
-pub enum ApplyError<'a, E> 
+pub enum ApplyError<'a, E>
 where
     E: Display,
 {
@@ -384,12 +380,24 @@ impl CliFlags {
             ],
             Self::ConfigFile => &[
                 "Set the config file to parse.",
-                "The default config path depends on the platform, see `--default config` for default path."
+                "The default config path depends on the platform, see `--default config` for default path.",
+                "The syntax of the config file is the same as the cli flags, however you can only put 1 flag per line.",
+                "Lines starting with `#` are ignored as comments.",
+                "Examples:",
+                "  Valid:",
+                "  ```",
+                "  -Kquit",
+                "    -kL-S-Q",
+                "  ```",
+                "  Invalid:",
+                "  ```",
+                "  -Kquit -kL-S-Q",
+                "  ```",
             ],
             Self::PrintDefault => &[
                 "Print the default for a specific configuration option.",
                 "Accepted values:",
-                "  - config : Print the default configuration path."
+                "  - config : Print the default configuration path.",
             ],
         }
     }
@@ -494,7 +502,7 @@ impl CliFlags {
                 Err(ApplyError::Exit)
             }
             Self::Version => {
-                const TEXT: ConstString<{NAME.len() + 1 + VERSION.len()}> = {
+                const TEXT: ConstString<{ NAME.len() + 1 + VERSION.len() }> = {
                     let mut text = ConstString::new();
                     text.push_str(NAME);
                     text.push(' ');
@@ -527,7 +535,8 @@ impl CliFlags {
             }
             Self::LogOutput => {
                 let value = value()?;
-                config.log_file = Some(File::open(value).map_err(|err| ApplyError::FileOpen(value, err))?,);
+                config.log_file =
+                    Some(File::open(value).map_err(|err| ApplyError::FileOpen(value, err))?);
                 Ok(())
             }
             Self::KeyAction => {
@@ -563,18 +572,14 @@ impl CliFlags {
                 let value = value()?;
 
                 match value {
-                    "config" => {
-                        match paths.get_config(&config) {
-                            Some(path) => {
-                                println!("{}", path.display());
-                                Err(ApplyError::Exit)
-                            }
-                            None => {
-                                Err(ApplyError::NoConfigPath)
-                            }
+                    "config" => match paths.get_config(config) {
+                        Some((path, _)) => {
+                            println!("{}", path.display());
+                            Err(ApplyError::Exit)
                         }
-                    }
-                    _ => Err(ApplyError::UnknownDefault(value))
+                        None => Err(ApplyError::NoConfigPath),
+                    },
+                    _ => Err(ApplyError::UnknownDefault(value)),
                 }
             }
         }

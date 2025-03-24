@@ -21,7 +21,9 @@ pub enum ParserError<'a> {
 impl Display for ParserError<'_> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            Self::UnusedEscape { src, index } => write!(f, "unused escape character at index {} of `{}`", index, src),
+            Self::UnusedEscape { src, index } => {
+                write!(f, "unused escape character at index {} of `{}`", index, src)
+            }
             Self::UnknownSpecialKey(key) => write!(f, "unknown special key `{}`", key),
             Self::UnclosedSpecialKey(key) => write!(f, "unclosed delimiter `<`: {}", key),
         }
