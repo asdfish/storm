@@ -16,32 +16,19 @@ impl<'a> Iterator for FileParser<'a> {
     type Item = &'a str;
 
     fn next(&mut self) -> Option<&'a str> {
-        Recursion::start(self, |s| {
-            let mut chars = s.0.char_indices();
+        let next = self.0
+            .lines()
+            .map(|line| line.trim())
+            .filter(|line| line.is_empty())
+            .filter(|line| line.chars().next() == Some('#'))
+            .next()?;
 
-            let (start, _) = match chars.by_ref()
-                .skip_while(|(_, ch)| ch.is_whitespace())
-                .next() {
-                    Some((_, '#')) => {
-                        let _ = chars.by_ref()
-                            .skip_while(|(_, ch)| !ch.is_whitespace())
-                            .next();
-                        s.0 = chars.as_str();
-                        return Recursion::Continue(s);
-                    },
-                    Some(start) => start,
-                    None => return Recursion::End(None),
-            };
-            let end = chars.by_ref()
-                .find(|(_, ch)| ch.is_whitespace())
-                .map(|(i, _)| i)
-                .unwrap_or(s.0.len());
+        // SAFETY: `self.0` and `next` point to the same string
+        let position = unsafe { next.as_ptr().offset_from(self.0.as_ptr()) };
+        let position: usize = position.try_into().ok()?;
+        self.0 = &self.0[position + next.len()..];
 
-            let line = &s.0[start..end];
-            s.0 = &s.0[end..];
-
-            Recursion::End(Some(line))
-        })
+        Some(next)
     }
 }
 
@@ -52,19 +39,24 @@ mod tests {
     #[test]
     fn file_parser_iter() {
         [
-            ("lorem\nipsum\ndolor\nsit\namet", &[
-                "lorem",
-                "ipsum",
-                "dolor",
-                "sit",
-                "amet",
-            ] as &[_])
+            (
+                "lorem\nipsum\ndolor\nsit\namet",
+                &["lorem", "ipsum", "dolor", "sit", "amet"] as &[_],
+            ),
+            (
+                "\t--help\n\t--version",
+                &["--help", "--version"],
+            ),
+            (
+                "\t--help\n\t--version\n#foobar",
+                &["--help", "--version"],
+            ),
         ]
-            .into_iter()
-            .for_each(|(input, output)| {
-                FileParser::new(input)
-                    .enumerate()
-                    .for_each(|(i, line)| assert_eq!(output[i], line));
-            });
+        .into_iter()
+        .for_each(|(input, output)| {
+            FileParser::new(input)
+                .enumerate()
+                .for_each(|(i, line)| assert_eq!(output[i], line));
+        });
     }
 }
