@@ -7,6 +7,7 @@ description = "cross platform tiling window manager"
 repository = "https://github.com/asdfish/storm.git"
 
 [dependencies]
+directories = "6.0.0"
 either = { version = "1.14.0", default-features = false }
 enum-map = "2.7.3"
 oneshot = "0.1.11"

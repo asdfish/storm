@@ -1,3 +1,14 @@
+use std::borrow::Cow;
+
+/// Trim a string to make it use less memory
+pub fn trim_string<'a>(str: &'a str) -> Box<str> {
+    str.lines()
+        .map(|line| line.trim())
+        .filter(|line| !line.is_empty() && !line.starts_with("#"))
+        .flat_map(|line| [line, "\n"])
+        .collect()
+}
+
 #[derive(Clone, Copy, Debug)]
 pub struct FileParser<'a>(&'a str);
 impl<'a> FileParser<'a> {

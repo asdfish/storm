@@ -3,7 +3,7 @@ pub mod key;
 pub mod opts;
 
 use {
-    crate::const_string::ConstString,
+    crate::{const_string::ConstString, path_cache::PathCache, NAME, VERSION},
     either::Either,
     enum_map::EnumMap,
     key::{KeyAction, KeySequence, Parser, ParserError},
@@ -17,13 +17,11 @@ use {
         fs::File,
         io::{self, Write, stderr},
         num::TryFromIntError,
+        path::Path,
         str::Utf8Error,
     },
     strum::VariantArray,
 };
-
-/// Someone may be compiling without using cargo, so we cannot do `env!("CARGO_PKG_VERSION")`.
-const VERSION: &str = "0.1.0";
 
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 #[repr(u8)]
@@ -64,6 +62,7 @@ impl LogLevel {
 /// important and [Self::log_file] may be incomplete.
 pub struct Config<'a> {
     commands: SmallVec<[&'a str; 8]>,
+    pub config_file: Option<&'a Path>,
     log_level: LogLevel,
     log_file: Option<File>,
     key_bindings: EnumMap<KeyAction, SmallVec<[KeySequence<'a>; 2]>>,
@@ -78,6 +77,7 @@ impl<'a> Config<'a> {
 
     pub fn apply_args<I: IntoIterator<Item = Result<&'a S, E>>, S: AsRef<str> + ?Sized + 'a, E>(
         &mut self,
+        paths: &'a PathCache,
         args: I,
     ) -> Result<(), ApplyError<'a, E>>
     where
@@ -93,7 +93,7 @@ impl<'a> Config<'a> {
                 return Err(ApplyError::UnknownFlag(flag));
             };
 
-            cli_flag.apply(self, flag, &mut parser)?;
+            cli_flag.apply(self, paths, flag, &mut parser)?;
         }
         Ok(())
     }
@@ -103,6 +103,7 @@ impl<'a> Config<'a> {
     /// `argc` must be accurate and `argv` must point to owned memory addresses
     pub unsafe fn apply_argv(
         &mut self,
+        paths: &'a PathCache,
         argc: c_int,
         argv: *const *const c_char,
     ) -> Result<(), Either<ApplyArgvError, ApplyError<ApplyArgvError>>> {
@@ -130,7 +131,7 @@ impl<'a> Config<'a> {
                         .map_err(|err| ApplyArgvError::Utf8(i, err))
                 });
 
-            self.apply_args(argv).map_err(Either::Right)
+            self.apply_args(paths, argv).map_err(Either::Right)
         }
     }
 
@@ -192,6 +193,8 @@ where
     FileOpen(&'a str, io::Error),
     KeyParser(key::ParserError<'a>),
     MissingValue(Flag<'a>),
+    NoConfigPath,
+    UnknownDefault(&'a str),
     UnknownLogLevel(&'a str),
     UnknownFlag(Flag<'a>),
     UnknownKeyAction(&'a str),
@@ -208,6 +211,8 @@ where
             Self::FileOpen(path, error) => write!(f, "failed to open file `{}`: {}", path, error),
             Self::KeyParser(err) => write!(f, "failed to parse keys: {}", err),
             Self::MissingValue(flag) => write!(f, "flag `{}` is missing an argument", flag),
+            Self::NoConfigPath => write!(f, "failed to get default config path"),
+            Self::UnknownDefault(def) => write!(f, "unknown configuration option: {}", def),
             Self::UnknownLogLevel(level) => write!(f, "unknown log level: {}", level),
             Self::UnknownFlag(flag) => write!(f, "unknown flag `{}`", flag),
             Self::UnknownKeyAction(action) => write!(f, "unknown key action: {}", action),
@@ -233,6 +238,9 @@ enum CliFlags {
 
     KeyAction,
     KeySequence,
+
+    ConfigFile,
+    PrintDefault,
 }
 impl CliFlags {
     const SHORT: phf::Map<char, CliFlags> = phf_map! {
@@ -243,6 +251,9 @@ impl CliFlags {
 
         'K' => CliFlags::KeyAction,
         'k' => CliFlags::KeySequence,
+
+        'c' => CliFlags::ConfigFile,
+        'd' => CliFlags::PrintDefault,
     };
     const LONG: phf::Map<&str, CliFlags> = phf_map! {
         "help" => CliFlags::Help,
@@ -252,6 +263,9 @@ impl CliFlags {
 
         "key-action" => CliFlags::KeyAction,
         "key-sequence" => CliFlags::KeySequence,
+
+        "config" => CliFlags::ConfigFile,
+        "default" => CliFlags::PrintDefault,
     };
 
     const fn short_flag(&self) -> char {
@@ -263,6 +277,9 @@ impl CliFlags {
 
             Self::KeyAction => 'K',
             Self::KeySequence => 'k',
+
+            Self::ConfigFile => 'c',
+            Self::PrintDefault => 'd',
         }
     }
     const fn long_flag(&self) -> &'static str {
@@ -274,6 +291,9 @@ impl CliFlags {
 
             Self::KeyAction => "key-action",
             Self::KeySequence => "key-sequence",
+
+            Self::ConfigFile => "config",
+            Self::PrintDefault => "default",
         }
     }
 
@@ -362,6 +382,15 @@ impl CliFlags {
                 "      - M : Alt.",
                 "      - S : Shift.",
             ],
+            Self::ConfigFile => &[
+                "Set the config file to parse.",
+                "The default config path depends on the platform, see `--default config` for default path."
+            ],
+            Self::PrintDefault => &[
+                "Print the default for a specific configuration option.",
+                "Accepted values:",
+                "  - config : Print the default configuration path."
+            ],
         }
     }
     /// Get the length of [Self::help] with padding and newlines.
@@ -434,6 +463,7 @@ impl CliFlags {
     fn apply<'a, I, E>(
         &self,
         config: &mut Config<'a>,
+        paths: &'a PathCache,
         flag: Flag<'a>,
         argv: &mut Argv<'a, I, E>,
     ) -> Result<(), ApplyError<'a, E>>
@@ -464,7 +494,16 @@ impl CliFlags {
                 Err(ApplyError::Exit)
             }
             Self::Version => {
-                println!("storm {}", VERSION,);
+                const TEXT: ConstString<{NAME.len() + 1 + VERSION.len()}> = {
+                    let mut text = ConstString::new();
+                    text.push_str(NAME);
+                    text.push(' ');
+                    text.push_str(VERSION);
+
+                    text
+                };
+
+                println!("storm {}", const { TEXT.as_str() });
                 Err(ApplyError::Exit)
             }
             Self::LogLevel => {
@@ -515,6 +554,29 @@ impl CliFlags {
                     Err(ApplyError::UnsetKeyAction)
                 }
             }
+
+            Self::ConfigFile => {
+                config.config_file = Some(Path::new(value()?));
+                Ok(())
+            }
+            Self::PrintDefault => {
+                let value = value()?;
+
+                match value {
+                    "config" => {
+                        match paths.get_config(&config) {
+                            Some(path) => {
+                                println!("{}", path.display());
+                                Err(ApplyError::Exit)
+                            }
+                            None => {
+                                Err(ApplyError::NoConfigPath)
+                            }
+                        }
+                    }
+                    _ => Err(ApplyError::UnknownDefault(value))
+                }
+            }
         }
     }
 }
@@ -561,13 +623,6 @@ mod tests {
         log_map(LogLevel::None, |_| false);
         log_map(LogLevel::Quiet, |level| matches!(level, LogLevel::Quiet));
         log_map(LogLevel::Verbose, |level| !matches!(level, LogLevel::None));
-    }
-
-    #[test]
-    fn version_sync() {
-        if let Some(cargo_version) = option_env!("CARGO_PKG_VERSION") {
-            assert_eq!(cargo_version, VERSION);
-        }
     }
 
     #[test]
