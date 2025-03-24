@@ -3,6 +3,8 @@ name = "storm"
 version = "0.1.0"
 edition = "2024"
 license-file = "LICENSE"
+description = "cross platform tiling window manager"
+repository = "https://github.com/asdfish/storm.git"
 
 [dependencies]
 enum-map = "2.7.3"
