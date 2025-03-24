@@ -44,9 +44,7 @@ impl<'a> Iterator for Arg<'a> {
                     self.next = &self.next[2..];
                     self.last_flag_kind = Some(FlagKind::Long);
 
-                    if let Some((split, _)) =
-                        self.next.char_indices().find(|(_, ch)| *ch == '=')
-                    {
+                    if let Some((split, _)) = self.next.char_indices().find(|(_, ch)| *ch == '=') {
                         let (flag, next) = self.next.split_at(split);
                         self.next = next;
 
@@ -124,8 +122,7 @@ where
                 Err(err) => return Some(Err(err)),
             })))
         } else {
-            self.last.as_mut()
-                .map(Ok)
+            self.last.as_mut().map(Ok)
         }
     }
 
@@ -211,10 +208,7 @@ impl<'a> From<&Flag<'a>> for FlagKind {
 
 #[cfg(test)]
 mod tests {
-    use {
-        super::*,
-        std::convert::Infallible,
-    };
+    use {super::*, std::convert::Infallible};
 
     #[test]
     fn flag_inner_init() {
@@ -348,8 +342,7 @@ mod tests {
             (0..nth).map(|_| argv.next()).for_each(drop);
             assert_eq!(argv.value(), Some(Ok(expected_value)));
 
-            argv
-                .enumerate()
+            argv.enumerate()
                 .for_each(|(i, flag)| assert_eq!(flag, Ok(expected_flags[i])));
         })
     }

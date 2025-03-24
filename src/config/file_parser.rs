@@ -14,11 +14,11 @@ impl<'a> Iterator for FileParser<'a> {
     type Item = &'a str;
 
     fn next(&mut self) -> Option<&'a str> {
-        let next = self.0
+        let next = self
+            .0
             .lines()
             .map(|line| line.trim())
-            .filter(|line| !line.is_empty())
-            .find(|line| !line.starts_with('#'))?;
+            .find(|line| !line.is_empty() && !line.starts_with('#'))?;
 
         // SAFETY: `self.0` and `next` point to the same string
         let position = unsafe { next.as_ptr().offset_from(self.0.as_ptr()) };
@@ -40,14 +40,8 @@ mod tests {
                 "lorem\nipsum\ndolor\nsit\namet",
                 &["lorem", "ipsum", "dolor", "sit", "amet"] as &[_],
             ),
-            (
-                "\t--help\n\t--version",
-                &["--help", "--version"],
-            ),
-            (
-                "\t--help\n\t--version\n#foobar",
-                &["--help", "--version"],
-            ),
+            ("\t--help\n\t--version", &["--help", "--version"]),
+            ("\t--help\n\t--version\n#foobar", &["--help", "--version"]),
         ]
         .into_iter()
         .for_each(|(input, output)| {

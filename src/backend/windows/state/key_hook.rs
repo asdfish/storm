@@ -12,7 +12,7 @@ use {
         ctypes::c_int,
         shared::minwindef::{LPARAM, LRESULT, WPARAM},
         um::winuser::{
-            CallNextHookEx, GetKeyState, GetKeyboardState, ToUnicode, KBDLLHOOKSTRUCT, VK_CONTROL,
+            CallNextHookEx, GetKeyState, GetKeyboardState, KBDLLHOOKSTRUCT, ToUnicode, VK_CONTROL,
             VK_F1, VK_F24, VK_LWIN, VK_MENU, VK_NEXT, VK_PRIOR, VK_RWIN, VK_SHIFT, WM_KEYDOWN,
         },
     },
@@ -105,9 +105,7 @@ pub unsafe extern "system" fn key_hook(
 
     if event_ident == WM_KEYDOWN as WPARAM {
         if let Some(sender) = EVENT_SENDER.read().as_ref() {
-            let send = |event|
-                sender.send(event)
-                    .expect(error::CLOSED_CHANNEL);
+            let send = |event| sender.send(event).expect(error::CLOSED_CHANNEL);
 
             let (tx, rx) = oneshot::channel();
 
@@ -118,8 +116,8 @@ pub unsafe extern "system" fn key_hook(
                     if rx.recv().unwrap_or(false) {
                         return 1;
                     }
-                },
-                Ok(None) => {},
+                }
+                Ok(None) => {}
                 Err(err) => send(Err(err)),
             }
         }

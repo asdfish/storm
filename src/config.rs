@@ -17,9 +17,9 @@ use {
         fmt::{self, Display, Formatter},
         fs::File,
         io::{self, Write, stderr},
-        str::Utf8Error,
         num::TryFromIntError,
         ops::DerefMut,
+        str::Utf8Error,
     },
     strum::VariantArray,
 };
@@ -77,7 +77,9 @@ impl<'a> Config<'a> {
         &mut self,
         args: I,
     ) -> Result<(), ApplyError<'a, E>>
-    where E: Display {
+    where
+        E: Display,
+    {
         let mut parser = Argv::from(args.into_iter().map(|arg| arg.map(|arg| arg.as_ref())));
         while let Some(flag) = parser.next() {
             let flag = flag?;
@@ -113,19 +115,19 @@ impl<'a> Config<'a> {
                 .map(|i| (i, unsafe { argv.add(i) }))
                 .map(|(i, ptr)| {
                     // SAFETY: null is checked above
-                    match unsafe { (*ptr).as_ref() }{
+                    match unsafe { (*ptr).as_ref() } {
                         Some(ptr) => Ok((i, ptr)),
                         None => Err(ApplyArgvError::NullArg(i)),
                     }
                 })
                 .map(|arg| {
                     let (i, ptr) = arg?;
-                    unsafe { CStr::from_ptr(ptr) }.to_str()
+                    unsafe { CStr::from_ptr(ptr) }
+                        .to_str()
                         .map_err(|err| ApplyArgvError::Utf8(i, err))
                 });
 
-            self.apply_args(argv)
-                .map_err(Either::Right)
+            self.apply_args(argv).map_err(Either::Right)
         }
     }
 
@@ -179,7 +181,9 @@ impl Display for ApplyArgvError {
 
 #[derive(Debug)]
 pub enum ApplyError<'a, E>
-where E: Display {
+where
+    E: Display,
+{
     ArgSource(E),
     Exit,
     FileOpen(&'a str, io::Error),
@@ -189,7 +193,9 @@ where E: Display {
     UnknownKeyAction(&'a str),
 }
 impl<E> Display for ApplyError<'_, E>
-where E: Display {
+where
+    E: Display,
+{
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
             Self::ArgSource(err) => write!(f, "failed to source arguments: {}", err),
@@ -203,7 +209,9 @@ where E: Display {
     }
 }
 impl<E> From<E> for ApplyError<'_, E>
-where E: Display {
+where
+    E: Display,
+{
     fn from(err: E) -> Self {
         Self::ArgSource(err)
     }
@@ -429,7 +437,7 @@ impl CliFlags {
         let mut value = move || match argv.value() {
             Some(Ok(val)) => Ok(val),
             Some(Err(err)) => Err(ApplyError::ArgSource(err)),
-            None => Err(ApplyError::MissingValue(flag))
+            None => Err(ApplyError::MissingValue(flag)),
         };
 
         match self {
