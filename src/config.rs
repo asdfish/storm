@@ -6,19 +6,17 @@ use {
     crate::const_string::ConstString,
     either::Either,
     enum_map::EnumMap,
-    key::{KeyAction, KeySequence},
+    key::{KeyAction, KeySequence, Parser, ParserError},
     opts::{Argv, Flag},
     phf::phf_map,
     smallvec::SmallVec,
     std::{
-        cell::{RefCell, RefMut},
         cmp::{Ordering, PartialOrd},
         ffi::{CStr, c_char, c_int},
         fmt::{self, Display, Formatter},
         fs::File,
         io::{self, Write, stderr},
         num::TryFromIntError,
-        ops::DerefMut,
         str::Utf8Error,
     },
     strum::VariantArray,
@@ -27,7 +25,7 @@ use {
 /// Someone may be compiling without using cargo, so we cannot do `env!("CARGO_PKG_VERSION")`.
 const VERSION: &str = "0.1.0";
 
-#[derive(Clone, Copy, Default, PartialEq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
 #[repr(u8)]
 /// Determines how verbose log messages should be.
 enum LogLevel {
@@ -61,18 +59,23 @@ impl LogLevel {
     }
 }
 
-#[derive(Default)]
+#[derive(Debug, Default)]
 /// Errors that occur during configuration parsing are reported to stderr, as they could be
 /// important and [Self::log_file] may be incomplete.
 pub struct Config<'a> {
     commands: SmallVec<[&'a str; 8]>,
     log_level: LogLevel,
-    log_file: Option<RefCell<File>>,
+    log_file: Option<File>,
     key_bindings: EnumMap<KeyAction, SmallVec<[KeySequence<'a>; 2]>>,
 
     key_action: Option<KeyAction>,
 }
 impl<'a> Config<'a> {
+    /// Remove state
+    pub fn clean_state(&mut self) {
+        self.key_action = None;
+    }
+
     pub fn apply_args<I: IntoIterator<Item = Result<&'a S, E>>, S: AsRef<str> + ?Sized + 'a, E>(
         &mut self,
         args: I,
@@ -82,7 +85,7 @@ impl<'a> Config<'a> {
     {
         let mut parser = Argv::from(args.into_iter().map(|arg| arg.map(|arg| arg.as_ref())));
         while let Some(flag) = parser.next() {
-            let flag = flag?;
+            let flag = flag.map_err(ApplyError::ArgSource)?;
             let Some(cli_flag) = (match &flag {
                 Flag::Short(short) => CliFlags::SHORT.get(short),
                 Flag::Long(long) => CliFlags::LONG.get(long.as_ref()),
@@ -132,24 +135,24 @@ impl<'a> Config<'a> {
     }
 
     fn log_with_level<F: FnOnce(&mut dyn Write) -> io::Result<()>>(
-        &self,
+        &mut self,
         level: LogLevel,
         print: F,
     ) {
-        match &self.log_file {
+        match &mut self.log_file {
             Some(file) => self.log_level.log(
                 level,
-                <RefMut<'_, File> as DerefMut>::deref_mut(&mut file.borrow_mut()),
+                file,
                 print,
             ),
             None => self.log_level.log(level, &mut stderr(), print),
         }
     }
 
-    pub fn log<F: FnOnce(&mut dyn Write) -> io::Result<()>>(&self, print: F) {
+    pub fn log<F: FnOnce(&mut dyn Write) -> io::Result<()>>(&mut self, print: F) {
         self.log_with_level(LogLevel::Verbose, print)
     }
-    pub fn error<F: FnOnce(&mut dyn Write) -> io::Result<()>>(&self, print: F) {
+    pub fn error<F: FnOnce(&mut dyn Write) -> io::Result<()>>(&mut self, print: F) {
         self.log_with_level(LogLevel::Quiet, print)
     }
 }
@@ -180,17 +183,19 @@ impl Display for ApplyArgvError {
 }
 
 #[derive(Debug)]
-pub enum ApplyError<'a, E>
+pub enum ApplyError<'a, E> 
 where
     E: Display,
 {
     ArgSource(E),
     Exit,
     FileOpen(&'a str, io::Error),
+    KeyParser(key::ParserError<'a>),
     MissingValue(Flag<'a>),
     UnknownLogLevel(&'a str),
     UnknownFlag(Flag<'a>),
     UnknownKeyAction(&'a str),
+    UnsetKeyAction,
 }
 impl<E> Display for ApplyError<'_, E>
 where
@@ -201,19 +206,21 @@ where
             Self::ArgSource(err) => write!(f, "failed to source arguments: {}", err),
             Self::Exit => Ok(()),
             Self::FileOpen(path, error) => write!(f, "failed to open file `{}`: {}", path, error),
+            Self::KeyParser(err) => write!(f, "failed to parse keys: {}", err),
             Self::MissingValue(flag) => write!(f, "flag `{}` is missing an argument", flag),
             Self::UnknownLogLevel(level) => write!(f, "unknown log level: {}", level),
             Self::UnknownFlag(flag) => write!(f, "unknown flag `{}`", flag),
             Self::UnknownKeyAction(action) => write!(f, "unknown key action: {}", action),
+            Self::UnsetKeyAction => write!(f, "`key-action` is not set"),
         }
     }
 }
-impl<E> From<E> for ApplyError<'_, E>
+impl<'a, E> From<ParserError<'a>> for ApplyError<'a, E>
 where
     E: Display,
 {
-    fn from(err: E) -> Self {
-        Self::ArgSource(err)
+    fn from(err: ParserError<'a>) -> Self {
+        Self::KeyParser(err)
     }
 }
 
@@ -481,9 +488,7 @@ impl CliFlags {
             }
             Self::LogOutput => {
                 let value = value()?;
-                config.log_file = Some(RefCell::new(
-                    File::open(value).map_err(|err| ApplyError::FileOpen(value, err))?,
-                ));
+                config.log_file = Some(File::open(value).map_err(|err| ApplyError::FileOpen(value, err))?,);
                 Ok(())
             }
             Self::KeyAction => {
@@ -498,9 +503,17 @@ impl CliFlags {
                 }
             }
             Self::KeySequence => {
-                let _value = value()?;
+                if let Some(action) = config.key_action {
+                    let value = value()?;
 
-                todo!("parse `value` & change Parser::parse to use `CopyStr`s")
+                    if let Some(key_sequence) = KeySequence::parse(value).transpose()? {
+                        config.key_bindings[action].push(key_sequence.0);
+                    }
+
+                    Ok(())
+                } else {
+                    Err(ApplyError::UnsetKeyAction)
+                }
             }
         }
     }
