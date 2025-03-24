@@ -87,8 +87,7 @@ where
                         }
                     }
                     Ok(Event::Key(consume, key)) => {
-                        // a response should be sent asap to allow the thread to continue
-
+                        // a response should be sent asap to allow the other thread to continue
                         self.pressed_keys.push(key);
                         if self.pressed_keys.len() > self.max_key_binding_len {
                             let _ = consume.send(KeyIntercept::Allow);

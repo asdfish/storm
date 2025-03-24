@@ -337,9 +337,9 @@ impl PartialOrd for KeySequence<'_> {
     fn partial_cmp(&self, rhs: &KeySequence<'_>) -> Option<Ordering> {
         self.iter()
             .zip_all(rhs.iter())
-            .fold(Some(Ordering::Equal), |state, keys| {
-                if state != Some(Ordering::Equal) {
-                    return state;
+            .try_fold(Ordering::Equal, |state, keys| {
+                if state != Ordering::Equal {
+                    return Some(state);
                 }
 
                 match keys {
