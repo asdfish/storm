@@ -1,7 +1,7 @@
 use {
     crate::{
         backend::{self, Window},
-        config::{Config, key::Key},
+        config::{Config, key::{Key, KeySequence}},
         error,
     },
     std::{
@@ -20,12 +20,14 @@ where
     E: Display,
     S: backend::State<W, E>,
     W: Window,
-{
-    pub backend_state: S,
+{    pub backend_state: S,
     config: Config<'a>,
     rx: EventReceiver<W, E>,
     pub workspace: u8,
     pub workspaces: HashMap<u8, Vec<W>>,
+
+    max_key_binding_len: usize,
+    pressed_keys: KeySequence<'a>,
 
     _marker: PhantomData<E>,
 }
@@ -41,6 +43,8 @@ where
         let (tx, rx) = mpsc::channel();
         let mut workspaces = HashMap::new();
 
+        let max_key_binding_len = config.max_key_binding_len();
+
         Ok(Self {
             backend_state: S::new(&mut workspaces, tx)?,
             config,
@@ -48,6 +52,9 @@ where
             // We start at one since most keyboards have 1 at the top left.
             workspace: 1,
             workspaces,
+
+            max_key_binding_len,
+            pressed_keys: KeySequence::with_capacity(max_key_binding_len),
 
             _marker: PhantomData,
         })
@@ -72,8 +79,7 @@ where
                         }
                     }
                     Ok(Event::Key(consume, key)) => {
-                        println!("key: {:?}", key);
-                        consume.send(false).expect(error::CLOSED_CHANNEL);
+                        let _ = consume.send(false);
                     }
                     Err(e) => self
                         .config

@@ -70,6 +70,16 @@ pub struct Config<'a> {
     key_action: Option<KeyAction>,
 }
 impl<'a> Config<'a> {
+    pub fn max_key_binding_len(&self) -> usize {
+        self
+            .key_bindings
+            .values()
+            .flat_map(|sequences| sequences.iter())
+            .map(|sequence| sequence.len())
+            .max()
+            .unwrap_or(0)
+    }
+
     /// Remove state
     pub fn clean_state(&mut self) {
         self.key_action = None;

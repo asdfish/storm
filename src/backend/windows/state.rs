@@ -44,14 +44,13 @@ impl Drop for WindowsBackendState {
 impl State<WindowsWindow, WindowsBackendError> for WindowsBackendState {
     fn each_event(state: &mut Storm<Self, WindowsWindow, WindowsBackendError>) {
         if let Ok(foreground_window) = WindowsWindow::try_from(unsafe { GetForegroundWindow() }) {
-            state
+            let _ = state
                 .backend_state
                 .event_sender
                 .send(Ok(Event::AddWindow {
                     workspace: state.workspace,
                     window: foreground_window,
-                }))
-                .expect(error::CLOSED_CHANNEL);
+                }));
         }
     }
 
@@ -72,14 +71,13 @@ impl State<WindowsWindow, WindowsBackendError> for WindowsBackendState {
 
         thread::spawn(move || {
             // the hook must be set on the same thread as the message sending
-            tx.send(
+            let _ = tx.send(
                 WinapiError::from_return(unsafe {
                     SetWindowsHookExW(WH_KEYBOARD_LL, Some(key_hook::key_hook), null_mut(), 0)
                 })
                 .map(NonNull::as_ptr)
                 .map(AtomicPtr::new),
-            )
-            .expect(error::CLOSED_CHANNEL);
+            );
 
             let mut msg = unsafe { mem::zeroed() };
             loop {

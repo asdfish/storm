@@ -105,7 +105,9 @@ pub unsafe extern "system" fn key_hook(
 
     if event_ident == WM_KEYDOWN as WPARAM {
         if let Some(sender) = EVENT_SENDER.read().as_ref() {
-            let send = |event| sender.send(event).expect(error::CLOSED_CHANNEL);
+            let send = |event| {
+                drop(sender.send(event));
+            };
 
             let (tx, rx) = oneshot::channel();
 

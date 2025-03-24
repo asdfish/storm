@@ -222,6 +222,10 @@ impl KeySequence<'_> {
     pub fn with_capacity(cap: usize) -> Self {
         Self(SmallVec::with_capacity(cap))
     }
+
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
 }
 impl<'a> KeySequence<'a> {
     /// Add a new key or append to the current tail if they share modifiers and are both textual
