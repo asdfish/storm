@@ -2,6 +2,7 @@ use {
     crate::recursion::Recursion,
     std::{
         fmt::{self, Display, Formatter},
+        marker::PhantomData,
         mem::replace,
     },
 };
@@ -89,47 +90,56 @@ pub enum ArgError {
     Value,
 }
 
-pub struct Argv<'a, I>
+pub struct Argv<'a, I, E>
 where
-    I: Iterator<Item = &'a str>,
+    I: Iterator<Item = Result<&'a str, E>>,
 {
     iter: I,
     last: Option<Arg<'a>>,
     passed_separator: bool,
+    _marker: PhantomData<E>,
 }
-impl<'a, I, O> From<I> for Argv<'a, O>
+impl<'a, I, O, E> From<I> for Argv<'a, O, E>
 where
-    I: IntoIterator<Item = &'a str, IntoIter = O>,
-    O: Iterator<Item = &'a str>,
+    I: IntoIterator<Item = Result<&'a str, E>, IntoIter = O>,
+    O: Iterator<Item = Result<&'a str, E>>,
 {
     fn from(iter: I) -> Self {
         Self {
             iter: iter.into_iter(),
             last: None,
             passed_separator: false,
+            _marker: PhantomData,
         }
     }
 }
-impl<'a, I> Argv<'a, I>
+impl<'a, I, E> Argv<'a, I, E>
 where
-    I: Iterator<Item = &'a str>,
+    I: Iterator<Item = Result<&'a str, E>>,
 {
     /// Returns none if there are no more arguments.
-    fn last_or_next(&mut self) -> Option<&mut Arg<'a>> {
+    fn last_or_next(&mut self) -> Option<Result<&mut Arg<'a>, E>> {
         if self.last.is_none() {
-            Some(self.last.insert(self.iter.next().map(Arg::from)?))
+            Some(Ok(self.last.insert(match self.iter.next()? {
+                Ok(arg) => Arg::from(arg),
+                Err(err) => return Some(Err(err)),
+            })))
         } else {
             self.last.as_mut()
+                .map(Ok)
         }
     }
 
     /// Get a value if it exists.
-    pub fn value(&mut self) -> Option<&'a str> {
-        self.last.take().and_then(Arg::value).or_else(|| {
-            let value = self.iter.next()?;
+    pub fn value(&mut self) -> Option<Result<&'a str, E>> {
+        self.last.take().and_then(Arg::value).map(Ok).or_else(|| {
+            let value = match self.iter.next()? {
+                Ok(value) => value,
+                Err(err) => return Some(Err(err)),
+            };
 
             if let Err(ArgError::Value) = Arg::from(value).next()? {
-                Some(value)
+                Some(Ok(value))
             } else {
                 self.last = Some(Arg::from(value));
                 None
@@ -137,25 +147,26 @@ where
         })
     }
 }
-impl<'a, I> Iterator for Argv<'a, I>
+impl<'a, I, E> Iterator for Argv<'a, I, E>
 where
-    I: Iterator<Item = &'a str>,
+    I: Iterator<Item = Result<&'a str, E>>,
 {
-    type Item = Flag<'a>;
+    type Item = Result<Flag<'a>, E>;
 
-    fn next(&mut self) -> Option<Flag<'a>> {
+    fn next(&mut self) -> Option<Result<Flag<'a>, E>> {
         Recursion::start(self, |s| {
             if s.passed_separator {
                 return Recursion::End(None);
             }
 
             let arg = match s.last_or_next() {
-                Some(arg) => arg,
+                Some(Ok(arg)) => arg,
+                Some(Err(err)) => return Recursion::End(Some(Err(err))),
                 None => return Recursion::End(None),
             };
 
             match arg.next().transpose() {
-                Ok(flag @ Some(_)) => Recursion::End(flag),
+                Ok(flag @ Some(_)) => Recursion::End(flag.map(Ok)),
                 Ok(None) | Err(ArgError::Value) => {
                     s.last = None;
                     Recursion::Continue(s)

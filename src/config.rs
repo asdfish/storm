@@ -4,6 +4,7 @@ pub mod opts;
 
 use {
     crate::const_string::ConstString,
+    either::Either,
     enum_map::EnumMap,
     key::{KeyAction, KeySequence},
     opts::{Argv, Flag},
@@ -16,6 +17,7 @@ use {
         fmt::{self, Display, Formatter},
         fs::File,
         io::{self, Write, stderr},
+        str::Utf8Error,
         num::TryFromIntError,
         ops::DerefMut,
     },
@@ -71,12 +73,14 @@ pub struct Config<'a> {
     key_action: Option<KeyAction>,
 }
 impl<'a> Config<'a> {
-    pub fn apply_args<I: IntoIterator<Item = &'a S>, S: AsRef<str> + ?Sized + 'a>(
+    pub fn apply_args<I: IntoIterator<Item = Result<&'a S, E>>, S: AsRef<str> + ?Sized + 'a, E>(
         &mut self,
         args: I,
-    ) -> Result<(), ApplyError<'a>> {
-        let mut parser = Argv::from(args.into_iter().map(|arg| arg.as_ref()));
+    ) -> Result<(), ApplyError<'a, E>>
+    where E: Display {
+        let mut parser = Argv::from(args.into_iter().map(|arg| arg.map(|arg| arg.as_ref())));
         while let Some(flag) = parser.next() {
+            let flag = flag?;
             let Some(cli_flag) = (match &flag {
                 Flag::Short(short) => CliFlags::SHORT.get(short),
                 Flag::Long(long) => CliFlags::LONG.get(long.as_ref()),
@@ -96,33 +100,32 @@ impl<'a> Config<'a> {
         &mut self,
         argc: c_int,
         argv: *const *const c_char,
-    ) -> Result<(), ApplyArgvError> {
+    ) -> Result<(), Either<ApplyArgvError, ApplyError<ApplyArgvError>>> {
         if argc < 0 {
-            Err(ApplyArgvError::NegativeArgc)
+            Err(Either::Left(ApplyArgvError::NegativeArgc))
         } else if argv.is_null() {
-            Err(ApplyArgvError::NullArgv)
+            Err(Either::Left(ApplyArgvError::NullArgv))
         } else {
-            let argc = <c_int as TryInto<usize>>::try_into(argc)?;
+            let argc = <c_int as TryInto<usize>>::try_into(argc)
+                .map_err(ApplyArgvError::TryFromInt)
+                .map_err(Either::Left)?;
             let argv = (0..argc)
                 .map(|i| (i, unsafe { argv.add(i) }))
-                .filter_map(|(i, ptr)| {
+                .map(|(i, ptr)| {
                     // SAFETY: null is checked above
-                    let arg = unsafe { (*ptr).as_ref() };
-                    if arg.is_none() {
-                        eprintln!("ignoring argument {}: located at null", i);
+                    match unsafe { (*ptr).as_ref() }{
+                        Some(ptr) => Ok((i, ptr)),
+                        None => Err(ApplyArgvError::NullArg(i)),
                     }
-
-                    arg.map(|arg| (i, arg))
                 })
-                .filter_map(|(i, ptr)| match unsafe { CStr::from_ptr(ptr) }.to_str() {
-                    Ok(arg) => Some(arg),
-                    Err(err) => {
-                        eprintln!("ignoring argument {}: {}", i, err);
-                        None
-                    }
+                .map(|arg| {
+                    let (i, ptr) = arg?;
+                    unsafe { CStr::from_ptr(ptr) }.to_str()
+                        .map_err(|err| ApplyArgvError::Utf8(i, err))
                 });
 
-            Ok(self.apply_args(argv)?)
+            self.apply_args(argv)
+                .map_err(Either::Right)
         }
     }
 
@@ -150,35 +153,34 @@ impl<'a> Config<'a> {
 }
 
 #[derive(Debug)]
-pub enum ApplyArgvError<'a> {
-    Apply(ApplyError<'a>),
+pub enum ApplyArgvError {
     NegativeArgc,
+    NullArg(usize),
     NullArgv,
     TryFromInt(TryFromIntError),
+    Utf8(usize, Utf8Error),
 }
-impl<'a> From<ApplyError<'a>> for ApplyArgvError<'a> {
-    fn from(err: ApplyError<'a>) -> Self {
-        Self::Apply(err)
-    }
-}
-impl From<TryFromIntError> for ApplyArgvError<'_> {
+impl From<TryFromIntError> for ApplyArgvError {
     fn from(err: TryFromIntError) -> Self {
         Self::TryFromInt(err)
     }
 }
-impl Display for ApplyArgvError<'_> {
+impl Display for ApplyArgvError {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            Self::Apply(err) => write!(f, "{}", err),
             Self::NegativeArgc => write!(f, "negative argc is not allowed"),
+            Self::NullArg(i) => write!(f, "argument {} is null", i),
             Self::NullArgv => write!(f, "null argv is not allowed"),
             Self::TryFromInt(err) => write!(f, "failed to convert argc to an usize: {}", err),
+            Self::Utf8(i, err) => write!(f, "argument {} contains invalid utf8: {}", i, err),
         }
     }
 }
 
 #[derive(Debug)]
-pub enum ApplyError<'a> {
+pub enum ApplyError<'a, E>
+where E: Display {
+    ArgSource(E),
     Exit,
     FileOpen(&'a str, io::Error),
     MissingValue(Flag<'a>),
@@ -186,9 +188,11 @@ pub enum ApplyError<'a> {
     UnknownFlag(Flag<'a>),
     UnknownKeyAction(&'a str),
 }
-impl Display for ApplyError<'_> {
+impl<E> Display for ApplyError<'_, E>
+where E: Display {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
+            Self::ArgSource(err) => write!(f, "failed to source arguments: {}", err),
             Self::Exit => Ok(()),
             Self::FileOpen(path, error) => write!(f, "failed to open file `{}`: {}", path, error),
             Self::MissingValue(flag) => write!(f, "flag `{}` is missing an argument", flag),
@@ -196,6 +200,12 @@ impl Display for ApplyError<'_> {
             Self::UnknownFlag(flag) => write!(f, "unknown flag `{}`", flag),
             Self::UnknownKeyAction(action) => write!(f, "unknown key action: {}", action),
         }
+    }
+}
+impl<E> From<E> for ApplyError<'_, E>
+where E: Display {
+    fn from(err: E) -> Self {
+        Self::ArgSource(err)
     }
 }
 
@@ -406,16 +416,21 @@ impl CliFlags {
         }
     }
 
-    fn apply<'a, I>(
+    fn apply<'a, I, E>(
         &self,
         config: &mut Config<'a>,
         flag: Flag<'a>,
-        argv: &mut Argv<'a, I>,
-    ) -> Result<(), ApplyError<'a>>
+        argv: &mut Argv<'a, I, E>,
+    ) -> Result<(), ApplyError<'a, E>>
     where
-        I: Iterator<Item = &'a str>,
+        I: Iterator<Item = Result<&'a str, E>>,
+        E: Display,
     {
-        let value = move || argv.value().ok_or(ApplyError::MissingValue(flag));
+        let value = move || match argv.value() {
+            Some(Ok(val)) => Ok(val),
+            Some(Err(err)) => Err(ApplyError::ArgSource(err)),
+            None => Err(ApplyError::MissingValue(flag))
+        };
 
         match self {
             Self::Help => {

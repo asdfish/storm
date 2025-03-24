@@ -10,6 +10,7 @@ mod state;
 
 use {
     config::{ApplyArgvError, ApplyError, Config},
+    either::Either,
     std::{
         env,
         ffi::{c_char, c_int},
@@ -22,7 +23,7 @@ fn main(argc: c_int, argv: *const *const c_char) -> c_int {
     let mut config = Config::default();
     match unsafe { config.apply_argv(argc, argv) } {
         Ok(_) => {}
-        Err(ApplyArgvError::Apply(ApplyError::Exit)) => return 0,
+        Err(Either::Right(ApplyError::Exit)) => return 0,
         Err(err) => {
             eprintln!("error during argument parsing: {}", err);
             return 1;
