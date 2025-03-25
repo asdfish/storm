@@ -141,6 +141,7 @@ impl StdError for WinapiError {}
 #[derive(Debug)]
 /// All possible errors in this backend.
 pub enum WindowsBackendError {
+    AlreadyDead,
     MultipleKeyboardHooks,
     NullKbdllhookstruct,
     TryFromInt(TryFromIntError),
@@ -159,6 +160,7 @@ impl From<WinapiError> for WindowsBackendError {
 impl Display for WindowsBackendError {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
+            Self::AlreadyDead => write!(f, "attempted to kill a window that already died"),
             Self::MultipleKeyboardHooks => write!(f, "there are multiple keyboard hooks installed"),
             Self::NullKbdllhookstruct => write!(f, "windows passed a null KBDLLHOOKSTRUCT pointer"),
             Self::TryFromInt(error) => write!(f, "{}", error),

@@ -31,6 +31,8 @@ pub trait Window {
 
     fn title(&self) -> Result<Self::String, Self::Error>;
 
+    fn kill(self) -> Result<(), Self::Error>;
+
     fn set_focus(&mut self, _: bool) -> Result<(), Self::Error>;
     fn set_visibility(&mut self, _: bool) -> Result<(), Self::Error>;
 }

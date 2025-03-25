@@ -553,6 +553,10 @@ impl CliFlags {
                 let value = value()?;
 
                 match value {
+                    "kill" => {
+                        config.key_action = Some(KeyAction::Kill);
+                        Ok(())
+                    }
                     "quit" => {
                         config.key_action = Some(KeyAction::Quit);
                         Ok(())

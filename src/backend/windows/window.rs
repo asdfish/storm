@@ -1,7 +1,10 @@
 use {
-    crate::backend::{
-        Rect, Window,
-        windows::{WinapiError, WindowsBackendError},
+    crate::{
+        backend::{
+            Rect, Window,
+            windows::{WinapiError, WindowsBackendError},
+        },
+        bomb::Bomb,
     },
     std::{
         error::Error as StdError,
@@ -14,13 +17,15 @@ use {
     widestring::ustring::U16String,
     winapi::{
         shared::{
-            minwindef::{FALSE, TRUE},
+            minwindef::{DWORD, FALSE, TRUE},
             windef::{HWND, HWND__, LPRECT, RECT},
         },
         um::{
-            winnt::{LONG, WCHAR},
+            processthreadsapi::{OpenProcess, TerminateProcess},
+            handleapi::CloseHandle,
+            winnt::{LONG, PROCESS_TERMINATE, WCHAR},
             winuser::{
-                EnableWindow, GetWindowRect, GetWindowTextLengthW, GetWindowTextW, IsWindow,
+                EnableWindow, GetWindowRect, GetWindowThreadProcessId, GetWindowTextLengthW, GetWindowTextW, IsWindow,
                 IsWindowEnabled, IsWindowVisible, MoveWindow, SW_MINIMIZE, SW_SHOW,
                 ShowWindowAsync,
             },
@@ -102,6 +107,24 @@ impl Window for WindowsWindow {
         })?;
         rect.try_into()
             .map_err(<TryFromIntError as Into<WindowsBackendError>>::into)
+    }
+
+    fn kill(self) -> Result<(), WindowsBackendError> {
+        let mut pid: DWORD = 0;
+        unsafe { GetWindowThreadProcessId(self.as_ptr(), &mut pid as *mut _); }
+
+        let handle = Bomb::new(WinapiError::from_return(unsafe {
+            OpenProcess(
+                PROCESS_TERMINATE,
+                FALSE,
+                pid
+            )
+        })?, |handle| {
+            unsafe { CloseHandle(handle.as_ptr()); }
+        });
+        unsafe { TerminateProcess(handle.as_ptr(), 0); }
+
+        Ok(())
     }
 
     fn title(&self) -> Result<U16String, WindowsBackendError> {

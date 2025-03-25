@@ -13,6 +13,7 @@ use {
         ops::Not,
         str,
     },
+    strum::VariantArray,
 };
 
 pub trait Parser<'a>: Sized {
@@ -38,6 +39,7 @@ impl Display for ParserError<'_> {
 
 #[derive(Clone, Copy, Debug, Enum)]
 pub enum KeyAction {
+    Kill,
     Quit,
 }
 impl KeyAction {
@@ -45,10 +47,12 @@ impl KeyAction {
     where
         E: Display,
         S: backend::State<W, E>,
-        W: Window {
-            match self {
-                Self::Quit => state.quit = true,
-            }
+        W: Window,
+    {
+        match self {
+            Self::Kill => {},
+            Self::Quit => state.quit = true,
+        }
     }
 }
 
@@ -352,7 +356,7 @@ impl PartialOrd for KeySequence<'_> {
     }
 }
 
-#[derive(Clone, Copy, Debug, Enum, PartialEq)]
+#[derive(Clone, Copy, Debug, Enum, PartialEq, VariantArray)]
 /// The possible modifier keys from a key press.
 ///
 /// Does not distinguish between left and right variants.
@@ -365,25 +369,27 @@ pub enum KeyModifier {
     Super,
 }
 impl KeyModifier {
-    pub const VARIANTS: [(&str, Self); 4] = [
-        ("M-", Self::Alt),
-        ("C-", Self::Control),
-        ("S-", Self::Shift),
-        ("L-", Self::Super),
-    ];
+    const fn as_str(&self) -> &'static str {
+        match self {
+            Self::Alt => "M-",
+            Self::Control => "C-",
+            Self::Shift => "S-",
+            Self::Super => "L-",
+        }
+    }
 }
 impl Display for KeyModifier {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", Self::VARIANTS[*self as usize].0)
+        write!(f, "{}", self.as_str())
     }
 }
 impl<'a> Parser<'a> for KeyModifier {
     fn parse(input: &'a str) -> Option<Result<(KeyModifier, &'a str), ParserError<'a>>> {
-        match input {
-            input if input.starts_with("M-") => Some(Ok((KeyModifier::Alt, &input[2..]))),
-            input if input.starts_with("C-") => Some(Ok((KeyModifier::Control, &input[2..]))),
-            input if input.starts_with("S-") => Some(Ok((KeyModifier::Shift, &input[2..]))),
-            input if input.starts_with("L-") => Some(Ok((KeyModifier::Super, &input[2..]))),
+        match input.as_bytes() {
+            [b'M', b'-', ..] => Some(Ok((KeyModifier::Alt, &input[2..]))),
+            [b'C', b'-', ..] => Some(Ok((KeyModifier::Control, &input[2..]))),
+            [b'S', b'-', ..] => Some(Ok((KeyModifier::Shift, &input[2..]))),
+            [b'L', b'-', ..] => Some(Ok((KeyModifier::Super, &input[2..]))),
             _ => None,
         }
     }
@@ -503,23 +509,19 @@ mod tests {
                             mods: KeyModifiers::from_fn(|_| true),
                         },
                     ]),
-                    KeySequence::from_iter([
-                        Key {
-                            kind: "foo".into(),
-                            mods: KeyModifiers::from_fn(|_| false),
-                        }
-                    ])
+                    KeySequence::from_iter([Key {
+                        kind: "foo".into(),
+                        mods: KeyModifiers::from_fn(|_| false),
+                    }]),
                 ],
                 Some(Ordering::Greater),
             ),
             (
                 [
-                    KeySequence::from_iter([
-                        Key {
-                            kind: "foo".into(),
-                            mods: KeyModifiers::from_fn(|_| false),
-                        }
-                    ]),
+                    KeySequence::from_iter([Key {
+                        kind: "foo".into(),
+                        mods: KeyModifiers::from_fn(|_| false),
+                    }]),
                     KeySequence::from_iter([
                         Key {
                             kind: "foo".into(),
@@ -584,10 +586,10 @@ mod tests {
                 None,
             ),
         ]
-            .into_iter()
-            .for_each(|([l, r], ordering)| {
-                assert_eq!(l.partial_cmp(&r), ordering);
-            });
+        .into_iter()
+        .for_each(|([l, r], ordering)| {
+            assert_eq!(l.partial_cmp(&r), ordering);
+        });
     }
 
     #[test]
@@ -665,14 +667,25 @@ mod tests {
 
     #[test]
     fn key_modifier() {
-        test_parser(KeyModifier::VARIANTS);
+        test_parser(
+            KeyModifier::VARIANTS
+                .iter()
+                .copied()
+                .map(|variant| (variant.as_str(), variant)),
+        );
     }
 
     #[test]
     fn key_modifiers() {
         test_parser(
             (1..=4)
-                .flat_map(|n| KeyModifier::VARIANTS.into_iter().permutations(n))
+                .flat_map(|n| {
+                    KeyModifier::VARIANTS
+                        .iter()
+                        .copied()
+                        .map(|variant| (variant.as_str(), variant))
+                        .permutations(n)
+                })
                 .map(|modifiers| modifiers.into_iter().unzip::<_, _, String, KeyModifiers>()),
         );
     }
